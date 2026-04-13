@@ -1,0 +1,77 @@
+{
+  "project": "Ambulao Driver App",
+  "branchName": "ralph/core-request-flow",
+  "description": "Complete the core request and navigation flow, using a robust state manager like Riverpod/Provider to track a mock ambulance trip.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Implement Core Trip State Management",
+      "description": "As a developer, I need a robust state management solution to track the current phase of an ambulance request so the UI can update appropriately.",
+      "acceptanceCriteria": [
+        "Create a state manager (e.g., TripProvider or TripBloc) to hold trip state",
+        "Define states: idle, request_incoming, accepted, navigating_to_patient, patient_picked_up, navigating_to_hospital, completed",
+        "Add methods to transition between these states",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Service to Handle Mock Backend Trip Updates",
+      "description": "As a developer, I need a service layer to simulate a backend that dispatches trips and updates their status.",
+      "acceptanceCriteria": [
+        "Create a TripService that can trigger mock incoming requests",
+        "Connect TripService to the state manager created in US-001 so it can dispatch updates",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Integrate State with Incoming Request Screen",
+      "description": "As a driver, I want the incoming request screen to be tied to real application state so that when I slide to accept, the app knows the trip has started.",
+      "acceptanceCriteria": [
+        "Update IncomingRequestScreen to listen to the new trip state",
+        "Connect the SlideToAcceptButton to trigger the state transition to 'accepted'",
+        "Automatically navigate to ActiveNavigationScreen upon successful acceptance",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Build Active Navigation Screen UI",
+      "description": "As a driver, I need a screen that shows the map and trip details while I am navigating to the patient or hospital.",
+      "acceptanceCriteria": [
+        "Create ActiveNavigationScreen widget",
+        "Include MapBackgroundMock as the base layer",
+        "Add a floating card showing ETA, distance, and patient details",
+        "Include primary action buttons (e.g., 'Arrived at Patient') that change based on state",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Integrate Active Navigation Screen with State",
+      "description": "As a driver, I want the Active Navigation screen to update its buttons and information based on what part of the trip I am currently on.",
+      "acceptanceCriteria": [
+        "Connect ActiveNavigationScreen UI actions to the trip state manager",
+        "Ensure action buttons trigger the correct state transitions (e.g., 'Arrived' -> 'patient_picked_up')",
+        "Ensure UI gracefully returns to Dashboard when trip state is 'completed'",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

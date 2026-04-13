@@ -1,0 +1,603 @@
+{
+  "@@locale": "en",
+
+  "appName": "AMBULAO",
+  "@appName": { "description": "App name" },
+
+  "tagline": "Every Second Counts",
+  "@tagline": {},
+
+  "back": "Back",
+  "@back": { "description": "Back button label used everywhere" },
+
+  "next": "Next",
+  "@next": {},
+
+  "cancel": "Cancel",
+  "@cancel": {},
+
+  "confirm": "Confirm",
+  "@confirm": {},
+
+  "save": "Save",
+  "@save": {},
+
+  "edit": "Edit",
+  "@edit": {},
+
+  "delete": "Delete",
+  "@delete": {},
+
+  "submit": "Submit",
+  "@submit": {},
+
+  "done": "Done",
+  "@done": {},
+
+  "loading": "Loading...",
+  "@loading": {},
+
+  "error": "Something went wrong. Please try again.",
+  "@error": {},
+
+  "retry": "Retry",
+  "@retry": {},
+
+  "yes": "Yes",
+  "@yes": {},
+
+  "no": "No",
+  "@no": {},
+
+  "ok": "OK",
+  "@ok": {},
+
+  "close": "Close",
+  "@close": {},
+
+  "search": "Search",
+  "@search": {},
+
+  "noResultsFound": "No results found",
+  "@noResultsFound": {},
+
+  "splashTagline": "Every Second Counts",
+  "@splashTagline": {},
+
+  "getStarted": "Get Started",
+  "@getStarted": {},
+
+  "enterMobileNumber": "Enter your mobile number",
+  "@enterMobileNumber": {},
+
+  "mobileNumber": "Mobile Number",
+  "@mobileNumber": {},
+
+  "sendOtp": "Send OTP",
+  "@sendOtp": {},
+
+  "verifyOtp": "Verify OTP",
+  "@verifyOtp": {},
+
+  "enterOtp": "Enter OTP",
+  "@enterOtp": {},
+
+  "otpSentTo": "OTP sent to",
+  "@otpSentTo": {},
+
+  "resendOtp": "Resend OTP",
+  "@resendOtp": {},
+
+  "resendIn": "Resend in",
+  "@resendIn": {},
+
+  "invalidOtp": "Invalid OTP. Please try again.",
+  "@invalidOtp": {},
+
+  "otpExpired": "OTP expired. Please request a new one.",
+  "@otpExpired": {},
+
+  "goodMorning": "Good Morning",
+  "@goodMorning": {},
+
+  "goodAfternoon": "Good Afternoon",
+  "@goodAfternoon": {},
+
+  "goodEvening": "Good Evening",
+  "@goodEvening": {},
+
+  "ourServices": "Our Services",
+  "@ourServices": {},
+
+  "blsAmbulance": "BLS Ambulance",
+  "@blsAmbulance": {},
+
+  "blsDescription": "Basic Life Support for non-critical emergencies",
+  "@blsDescription": {},
+
+  "alsAmbulance": "ALS Ambulance",
+  "@alsAmbulance": {},
+
+  "alsDescription": "Advanced Life Support with trained paramedics",
+  "@alsDescription": {},
+
+  "ambuBike": "Ambu Bike",
+  "@ambuBike": {},
+
+  "ambuBikeDescription": "Fast response for narrow lanes and traffic",
+  "@ambuBikeDescription": {},
+
+  "lastRide": "Last Ride",
+  "@lastRide": {},
+
+  "lastRideDescription": "Dignified transport for the deceased",
+  "@lastRideDescription": {},
+
+  "recentTrips": "Recent Trips",
+  "@recentTrips": {},
+
+  "viewAll": "View All",
+  "@viewAll": {},
+
+  "noRecentTrips": "No recent trips",
+  "@noRecentTrips": {},
+
+  "bookAmbulance": "Book Ambulance",
+  "@bookAmbulance": {},
+
+  "pickupLocation": "Pickup Location",
+  "@pickupLocation": {},
+
+  "dropLocation": "Drop Location",
+  "@dropLocation": {},
+
+  "enterPickupLocation": "Enter pickup location",
+  "@enterPickupLocation": {},
+
+  "enterDropLocation": "Enter drop location",
+  "@enterDropLocation": {},
+
+  "useCurrentLocation": "Use current location",
+  "@useCurrentLocation": {},
+
+  "fetchingLocation": "Fetching your location...",
+  "@fetchingLocation": {},
+
+  "selectAmbulanceType": "Select Ambulance Type",
+  "@selectAmbulanceType": {},
+
+  "patientCondition": "Patient Condition",
+  "@patientCondition": {},
+
+  "selectCondition": "Select condition",
+  "@selectCondition": {},
+
+  "stable": "Stable",
+  "@stable": {},
+
+  "critical": "Critical",
+  "@critical": {},
+
+  "unconscious": "Unconscious",
+  "@unconscious": {},
+
+  "breathing": "Breathing difficulty",
+  "@breathing": {},
+
+  "chestPain": "Chest pain",
+  "@chestPain": {},
+
+  "accident": "Accident",
+  "@accident": {},
+
+  "paymentMethod": "Payment Method",
+  "@paymentMethod": {},
+
+  "cash": "Cash",
+  "@cash": {},
+
+  "upi": "UPI",
+  "@upi": {},
+
+  "card": "Card",
+  "@card": {},
+
+  "estimatedFare": "Estimated Fare",
+  "@estimatedFare": {},
+
+  "confirmAndFind": "Confirm & Find Ambulance",
+  "@confirmAndFind": {},
+
+  "findingNearestAmbulance": "Finding Nearest Ambulance",
+  "@findingNearestAmbulance": {},
+
+  "pleaseWait": "Please wait while we find the nearest available ambulance",
+  "@pleaseWait": {},
+
+  "driversNearby": "drivers nearby",
+  "@driversNearby": {},
+
+  "cancelSearch": "Cancel Search",
+  "@cancelSearch": {},
+
+  "ambulanceFound": "Ambulance Found",
+  "@ambulanceFound": {},
+
+  "driverArriving": "Driver is Arriving",
+  "@driverArriving": {},
+
+  "minutesAway": "minutes away",
+  "@minutesAway": {},
+
+  "kmAway": "km away",
+  "@kmAway": {},
+
+  "trackingDriver": "Tracking your driver",
+  "@trackingDriver": {},
+
+  "callDriver": "Call Driver",
+  "@callDriver": {},
+
+  "shareTrip": "Share Trip",
+  "@shareTrip": {},
+
+  "cancelTrip": "Cancel Trip",
+  "@cancelTrip": {},
+
+  "enterPin": "Enter PIN",
+  "@enterPin": {},
+
+  "enterDriverPin": "Enter driver's 4-digit PIN to start the trip",
+  "@enterDriverPin": {},
+
+  "pinVerified": "PIN Verified",
+  "@pinVerified": {},
+
+  "wrongPin": "Wrong PIN. Please try again.",
+  "@wrongPin": {},
+
+  "tripStarted": "Trip Started",
+  "@tripStarted": {},
+
+  "navigatingTo": "Navigating to",
+  "@navigatingTo": {},
+
+  "estimatedArrival": "Estimated Arrival",
+  "@estimatedArrival": {},
+
+  "tripCompleted": "Trip Completed",
+  "@tripCompleted": {},
+
+  "totalFare": "Total Fare",
+  "@totalFare": {},
+
+  "ratYourExperience": "Rate Your Experience",
+  "@ratYourExperience": {},
+
+  "howWasYourRide": "How was your ride?",
+  "@howWasYourRide": {},
+
+  "writeReview": "Write a review (optional)",
+  "@writeReview": {},
+
+  "submitRating": "Submit Rating",
+  "@submitRating": {},
+
+  "skipRating": "Skip",
+  "@skipRating": {},
+
+  "thankYou": "Thank You",
+  "@thankYou": {},
+
+  "helpAndSupport": "Help & Support",
+  "@helpAndSupport": {},
+
+  "faq": "FAQ",
+  "@faq": {},
+
+  "callSupport": "Call Support",
+  "@callSupport": {},
+
+  "frequentlyAskedQuestions": "Frequently Asked Questions",
+  "@frequentlyAskedQuestions": {},
+
+  "tripHistory": "Trip History",
+  "@tripHistory": {},
+
+  "noTripsYet": "No trips yet",
+  "@noTripsYet": {},
+
+  "tripDate": "Trip Date",
+  "@tripDate": {},
+
+  "tripId": "Trip ID",
+  "@tripId": {},
+
+  "viewReceipt": "View Receipt",
+  "@viewReceipt": {},
+
+  "profile": "Profile",
+  "@profile": {},
+
+  "editProfile": "Edit Profile",
+  "@editProfile": {},
+
+  "fullName": "Full Name",
+  "@fullName": {},
+
+  "mobileNumberLabel": "Mobile Number",
+  "@mobileNumberLabel": {},
+
+  "emailAddress": "Email Address",
+  "@emailAddress": {},
+
+  "dateOfBirth": "Date of Birth",
+  "@dateOfBirth": {},
+
+  "gender": "Gender",
+  "@gender": {},
+
+  "male": "Male",
+  "@male": {},
+
+  "female": "Female",
+  "@female": {},
+
+  "other": "Other",
+  "@other": {},
+
+  "preferNotToSay": "Prefer not to say",
+  "@preferNotToSay": {},
+
+  "address": "Address",
+  "@address": {},
+
+  "emergencyContact": "Emergency Contact",
+  "@emergencyContact": {},
+
+  "bloodGroup": "Blood Group",
+  "@bloodGroup": {},
+
+  "medicalInfo": "Medical Information",
+  "@medicalInfo": {},
+
+  "allergies": "Allergies",
+  "@allergies": {},
+
+  "addAllergy": "Add Allergy",
+  "@addAllergy": {},
+
+  "selectAllergies": "Select Allergies",
+  "@selectAllergies": {},
+
+  "customAllergy": "Custom Allergy",
+  "@customAllergy": {},
+
+  "enterCustomAllergy": "Enter custom allergy",
+  "@enterCustomAllergy": {},
+
+  "allergyRemoved": "Allergy removed",
+  "@allergyRemoved": {},
+
+  "noAllergiesAdded": "No allergies added",
+  "@noAllergiesAdded": {},
+
+  "latex": "Latex",
+  "@latex": {},
+
+  "penicillin": "Penicillin",
+  "@penicillin": {},
+
+  "aspirin": "Aspirin",
+  "@aspirin": {},
+
+  "ibuprofen": "Ibuprofen",
+  "@ibuprofen": {},
+
+  "sulfaDrugs": "Sulfa drugs",
+  "@sulfaDrugs": {},
+
+  "codeine": "Codeine",
+  "@codeine": {},
+
+  "settings": "Settings",
+  "@settings": {},
+
+  "appPreferences": "App Preferences",
+  "@appPreferences": {},
+
+  "language": "Language",
+  "@language": {},
+
+  "changeLanguage": "Change Language",
+  "@changeLanguage": {},
+
+  "selectLanguage": "Select Language",
+  "@selectLanguage": {},
+
+  "english": "English",
+  "@english": {},
+
+  "hindi": "हिंदी",
+  "@hindi": {},
+
+  "telugu": "తెలుగు",
+  "@telugu": {},
+
+  "malayalam": "മലയാളം",
+  "@malayalam": {},
+
+  "urdu": "اردو",
+  "@urdu": {},
+
+  "languageChanged": "Language changed",
+  "@languageChanged": {},
+
+  "notifications": "Notifications",
+  "@notifications": {},
+
+  "enableNotifications": "Enable Notifications",
+  "@enableNotifications": {},
+
+  "soundAlerts": "Sound Alerts",
+  "@soundAlerts": {},
+
+  "vibration": "Vibration",
+  "@vibration": {},
+
+  "locationServices": "Location Services",
+  "@locationServices": {},
+
+  "enableLocation": "Enable Location",
+  "@enableLocation": {},
+
+  "privacyPolicy": "Privacy Policy",
+  "@privacyPolicy": {},
+
+  "termsOfService": "Terms of Service",
+  "@termsOfService": {},
+
+  "aboutUs": "About Us",
+  "@aboutUs": {},
+
+  "version": "Version",
+  "@version": {},
+
+  "signOut": "Sign Out",
+  "@signOut": {},
+
+  "signOutConfirm": "Are you sure you want to sign out?",
+  "@signOutConfirm": {},
+
+  "deleteAccount": "Delete Account",
+  "@deleteAccount": {},
+
+  "deleteAccountConfirm": "Are you sure you want to delete your account? This action cannot be undone.",
+  "@deleteAccountConfirm": {},
+
+  "driverName": "Driver Name",
+  "@driverName": {},
+
+  "vehicleNumber": "Vehicle Number",
+  "@vehicleNumber": {},
+
+  "rating": "Rating",
+  "@rating": {},
+
+  "totalTrips": "Total Trips",
+  "@totalTrips": {},
+
+  "online": "Online",
+  "@online": {},
+
+  "offline": "Offline",
+  "@offline": {},
+
+  "locationPermissionTitle": "Enable Location Services",
+  "@locationPermissionTitle": {},
+
+  "locationPermissionMessage": "AMBULAO needs your location to find the nearest ambulance and navigate to you.",
+  "@locationPermissionMessage": {},
+
+  "allowLocation": "Allow Location Access",
+  "@allowLocation": {},
+
+  "notNow": "Not Now",
+  "@notNow": {},
+
+  "openSettings": "Open Settings",
+  "@openSettings": {},
+
+  "notificationPermissionTitle": "Enable Notifications",
+  "@notificationPermissionTitle": {},
+
+  "notificationPermissionMessage": "Get instant alerts for ambulance status and trip updates.",
+  "@notificationPermissionMessage": {},
+
+  "allowNotifications": "Allow Notifications",
+  "@allowNotifications": {},
+
+  "cancelBookingTitle": "Cancel Booking?",
+  "@cancelBookingTitle": {},
+
+  "cancelBookingMessage": "Are you sure you want to cancel this booking?",
+  "@cancelBookingMessage": {},
+
+  "keepBooking": "Keep Booking",
+  "@keepBooking": {},
+
+  "yesCancel": "Yes, Cancel",
+  "@yesCancel": {},
+
+  "bookingCancelled": "Booking cancelled",
+  "@bookingCancelled": {},
+
+  "fareBreakdown": "Fare Breakdown",
+  "@fareBreakdown": {},
+
+  "baseFare": "Base Fare",
+  "@baseFare": {},
+
+  "distanceCharge": "Distance Charge",
+  "@distanceCharge": {},
+
+  "taxes": "Taxes",
+  "@taxes": {},
+
+  "total": "Total",
+  "@total": {},
+
+  "payNow": "Pay Now",
+  "@payNow": {},
+
+  "paymentSuccessful": "Payment Successful",
+  "@paymentSuccessful": {},
+
+  "paymentFailed": "Payment Failed. Please try again.",
+  "@paymentFailed": {},
+
+  "home": "Home",
+  "@home": {},
+
+  "trips": "Trips",
+  "@trips": {},
+
+  "sosButton": "SOS",
+  "@sosButton": {},
+
+  "sosConfirmTitle": "Send SOS Alert?",
+  "@sosConfirmTitle": {},
+
+  "sosConfirmMessage": "This will immediately alert emergency contacts and dispatch the nearest ambulance.",
+  "@sosConfirmMessage": {},
+
+  "sendSos": "Send SOS",
+  "@sendSos": {},
+
+  "sosSent": "SOS Alert Sent",
+  "@sosSent": {},
+
+  "shareLocation": "Share Location",
+  "@shareLocation": {},
+
+  "locationShared": "Location shared successfully",
+  "@locationShared": {},
+
+  "noInternetTitle": "No Internet Connection",
+  "@noInternetTitle": {},
+
+  "noInternetMessage": "Please check your connection and try again.",
+  "@noInternetMessage": {},
+
+  "serverErrorTitle": "Server Error",
+  "@serverErrorTitle": {},
+
+  "serverErrorMessage": "We are experiencing issues. Please try again shortly.",
+  "@serverErrorMessage": {},
+
+  "sessionExpired": "Your session has expired. Please log in again.",
+  "@sessionExpired": {},
+
+  "copyrightText": "© 2026 AMBULAO Technologies Pvt. Ltd.",
+  "@copyrightText": {}
+}
