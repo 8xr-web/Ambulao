@@ -11,8 +11,11 @@ import 'viewmodels/user_provider.dart';
 import 'providers/locale_provider.dart';
 import 'views/splash_screen.dart';
 import 'package:flutter_hello_world/localisation/app_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 

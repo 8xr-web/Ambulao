@@ -1,24 +1,49 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ambulao_driver/screens/active_navigation_screen.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/core/theme.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ambulao_driver/providers/trip_provider.dart';
 
-class IncomingRequestScreen extends ConsumerStatefulWidget {
-  const IncomingRequestScreen({super.key});
+class IncomingRequestScreen extends StatefulWidget {
+  final String tripId;
+  final String patientName;
+  final String ambulanceType;
+  final String pickupAddress;
+  final double pickupLat;
+  final double pickupLng;
+  final String dropAddress;
+  final double dropLat;
+  final double dropLng;
+  final double estimatedFare;
+  final String? patientPhone;
+
+  const IncomingRequestScreen({
+    super.key,
+    required this.tripId,
+    required this.patientName,
+    required this.ambulanceType,
+    required this.pickupAddress,
+    required this.pickupLat,
+    required this.pickupLng,
+    required this.dropAddress,
+    required this.dropLat,
+    required this.dropLng,
+    required this.estimatedFare,
+    this.patientPhone,
+  });
 
   @override
-  ConsumerState<IncomingRequestScreen> createState() =>
-      _IncomingRequestScreenState();
+  State<IncomingRequestScreen> createState() => _IncomingRequestScreenState();
 }
 
-class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
+class _IncomingRequestScreenState extends State<IncomingRequestScreen>
     with SingleTickerProviderStateMixin {
   int _countdown = 15;
   Timer? _timer;
   double _progress = 1.0;
+  bool _isAccepting = false;
 
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
@@ -29,10 +54,7 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_countdown <= 0) {
         t.cancel();
-        if (mounted) {
-          ref.read(tripProvider.notifier).resetTrip();
-          Navigator.pop(context);
-        }
+        if (mounted) Navigator.pop(context);
       } else {
         setState(() {
           _countdown--;
@@ -42,7 +64,8 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
     });
 
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.2, end: 1.0)
         .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
   }
@@ -54,18 +77,76 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
     super.dispose();
   }
 
-  void _acceptTrip() {
+  Future<void> _acceptTrip() async {
     _timer?.cancel();
-    ref.read(tripProvider.notifier).acceptTrip();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const ActiveNavigationScreen()),
-    );
+    setState(() => _isAccepting = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final driverId = prefs.getString('driver_uid') ?? '';
+      final driverName = prefs.getString('profile_name') ?? 'Driver';
+      final driverPhone = prefs.getString('driver_phone') ?? '';
+      final vehicleNumber = prefs.getString('profile_vehicle') ?? '';
+
+      // Update trip in Firestore — patient app is listening for this
+      await FirebaseFirestore.instance
+          .collection('trips')
+          .doc(widget.tripId)
+          .update({
+        'driver_id': driverId,
+        'driver_name': driverName,
+        'driver_phone': driverPhone,
+        'vehicle_number': vehicleNumber,
+        'status': 'accepted',
+        'accepted_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+        'estimated_time': '8',
+      });
+
+      // Update driver document
+      if (driverId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('drivers')
+            .doc(driverId)
+            .set({
+          'current_trip_id': widget.tripId,
+          'status': 'on_trip',
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ActiveNavigationScreen(
+            tripId: widget.tripId,
+            patientName: widget.patientName,
+            pickupAddress: widget.pickupAddress,
+            pickupLat: widget.pickupLat,
+            pickupLng: widget.pickupLng,
+            dropAddress: widget.dropAddress,
+            dropLat: widget.dropLat,
+            dropLng: widget.dropLng,
+            estimatedFare: widget.estimatedFare,
+            patientPhone: widget.patientPhone ?? '',
+          ),
+        ),
+      );
+    } catch (e) {
+      setState(() => _isAccepting = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to accept: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _declineTrip() {
     _timer?.cancel();
-    ref.read(tripProvider.notifier).resetTrip();
     Navigator.pop(context);
   }
 
@@ -115,7 +196,7 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                     ),
 
                     Container(
-                      color: AppTheme.primaryBlue.withValues(alpha: 0.02), // subtle tint
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.02),
                       padding: const EdgeInsets.all(24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,14 +229,17 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                   ),
                                 ),
                               ),
-
-                              // Rating
-                              Row(
-                                children: [
-                                  const Text('4.9', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0A1F44))),
-                                  const SizedBox(width: 4),
-                                  Icon(Icons.star, color: const Color(0xFFFF9500), size: 18),
-                                ],
+                              // Ambulance type badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF0F4FF),
+                                  borderRadius: BorderRadius.circular(50),
+                                ),
+                                child: Text(
+                                  widget.ambulanceType,
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryBlue),
+                                ),
                               ),
                             ],
                           ),
@@ -172,41 +256,29 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                   color: const Color(0xFFE8F2FF),
                                   border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.3), width: 2),
                                 ),
-                                child: const Icon(Icons.person, color: AppTheme.primaryBlue, size: 30),
+                                child: Center(
+                                  child: Text(
+                                    widget.patientName.isNotEmpty ? widget.patientName[0].toUpperCase() : 'P',
+                                    style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.w800, fontSize: 22),
+                                  ),
+                                ),
                               ),
                               const SizedBox(width: 16),
-                              // Distance / Time
+                              // Distance / Addresses
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      ref.watch(tripProvider).currentTrip?.dropAddress ?? 'Rajeev Hospital',
-                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0A1F44)),
+                                      widget.patientName,
+                                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0A1F44)),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(color: const Color(0xFFF0F4FF), borderRadius: BorderRadius.circular(50)),
-                                          child: Text(
-                                            ref.watch(tripProvider).currentTrip?.distance ?? '2.4 km',
-                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryBlue),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(width: 1, height: 16, color: const Color(0xFFDDE3EE)),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(color: const Color(0xFFF0F4FF), borderRadius: BorderRadius.circular(50)),
-                                          child: Text(
-                                            ref.watch(tripProvider).currentTrip?.duration ?? '8 min',
-                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.textSecondary),
-                                          ),
-                                        ),
-                                      ],
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      widget.pickupAddress,
+                                      style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
@@ -223,14 +295,8 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                   children: [
                                     const Text('EST. FARE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryBlue, letterSpacing: 0.5)),
                                     Text(
-                                      ref.watch(tripProvider).currentTrip?.estimatedFare ?? '₹380',
+                                      '₹${widget.estimatedFare.toStringAsFixed(0)}',
                                       style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Color(0xFF0040A0)),
-                                    ),
-                                    Container(
-                                      margin: const EdgeInsets.only(top: 4),
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: const Color(0xFFFFF8E6), borderRadius: BorderRadius.circular(4)),
-                                      child: const Text('+₹40 Surge', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFFF9500))),
                                     ),
                                   ],
                                 ),
@@ -239,7 +305,7 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                           ),
                           const SizedBox(height: 28),
 
-                          // Animated Route Preview
+                          // Route Preview
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -261,9 +327,19 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(ref.watch(tripProvider).currentTrip?.dropAddress ?? 'Apollo Hospital', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0A1F44))),
-                                      const SizedBox(height: 6),
-                                      Text('Dropoff', style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                                      Text(
+                                        widget.pickupAddress,
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0A1F44)),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        widget.dropAddress,
+                                        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -275,9 +351,9 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                           // Action Buttons
                           Row(
                             children: [
-                              // Decline (Smaller)
+                              // Decline
                               TextButton(
-                                onPressed: _declineTrip,
+                                onPressed: _isAccepting ? null : _declineTrip,
                                 style: TextButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -285,7 +361,7 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                 child: const Text('Decline', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textSecondary)),
                               ),
                               const SizedBox(width: 16),
-                              // Accept (Large, Prominent, Glowing)
+                              // Accept
                               Expanded(
                                 child: Stack(
                                   alignment: Alignment.center,
@@ -300,7 +376,7 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                         ],
                                       ),
                                       child: ElevatedButton(
-                                        onPressed: _acceptTrip,
+                                        onPressed: _isAccepting ? null : _acceptTrip,
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: AppTheme.primaryBlue,
                                           foregroundColor: Colors.white,
@@ -308,20 +384,25 @@ class _IncomingRequestScreenState extends ConsumerState<IncomingRequestScreen>
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                                           elevation: 0,
                                         ),
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(Icons.local_hospital, size: 22),
-                                            const SizedBox(width: 10),
-                                            Text(
-                                              'Accept (${_countdown}s)',
-                                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                                            ),
-                                          ],
-                                        ),
+                                        child: _isAccepting
+                                            ? const SizedBox(
+                                                width: 24, height: 24,
+                                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                              )
+                                            : Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(Icons.local_hospital, size: 22),
+                                                  const SizedBox(width: 10),
+                                                  Text(
+                                                    'Accept (${_countdown}s)',
+                                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                                                  ),
+                                                ],
+                                              ),
                                       ),
                                     ),
-                                    // Circular Progress overlay around button (optional, or just use linear)
+                                    // Circular progress ring
                                     Positioned.fill(
                                       child: IgnorePointer(
                                         child: CircularProgressIndicator(

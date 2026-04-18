@@ -6,21 +6,24 @@ import 'package:ambulao_driver/widgets/bottom_sheet_card.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/incoming_request_screen.dart';
 import 'package:ambulao_driver/screens/earnings_screen.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ambulao_driver/providers/trip_provider.dart';
-import 'package:ambulao_driver/screens/main_layout.dart';
+import 'package:ambulao_driver/services/trip_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class DashboardScreen extends ConsumerStatefulWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> {
   bool isOnline = false;
   Duration _onlineTime = Duration.zero;
   Timer? _timer;
+  StreamSubscription<QuerySnapshot>? _tripSubscription;
+  DateTime? _onlineStartTime;
+  String _currentDriverId = '';
+  String _driverAmbulanceType = 'BLS';
 
   @override
   void initState() {
@@ -56,28 +59,99 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _tripSubscription?.cancel();
     super.dispose();
   }
 
-  void _toggleOnline() async {
-    setState(() {
-      isOnline = !isOnline;
-      if (isOnline) {
-        _startOnlineTimer();
-      } else {
-        _timer?.cancel();
-      }
-    });
-    
+  Future<void> _goOnline() async {
+    // Update UI immediately so the button feels responsive
+    setState(() => isOnline = true);
+    _startOnlineTimer();
+
+    // Capture the exact moment the driver goes online.
+    // Only trips created AFTER this timestamp will trigger the notification.
+    _onlineStartTime = DateTime.now();
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('driver_is_online', isOnline);
-    
-    if (isOnline) {
-      Future.delayed(const Duration(seconds: 3), () {
-        if (!mounted) return;
-        ref.read(tripProvider.notifier).simulateIncomingRequest();
-      });
+    _currentDriverId = prefs.getString('driver_uid') ?? '';
+    _driverAmbulanceType = prefs.getString('pref_ambulance_type') ?? 'BLS';
+    await prefs.setBool('driver_is_online', true);
+
+    // Update driver status in Firestore (non-blocking — UI already updated)
+    if (_currentDriverId.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('drivers')
+            .doc(_currentDriverId)
+            .set({
+          'is_online': true,
+          'status': 'online',
+          'last_online_at': FieldValue.serverTimestamp(),
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Firestore driver update failed: $e');
+      }
     }
+
+    // Start listening — only trips with ambulance_type match
+    _tripSubscription = TripService.listenForPendingTrips(
+      ambulanceType: _driverAmbulanceType,
+    ).listen((snapshot) {
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final tripData = change.doc.data() as Map<String, dynamic>;
+          final tripId = change.doc.id;
+          
+          // 1. Client-side filtering: Ignore trips created before we went online
+          final createdAt = tripData['created_at'] as Timestamp?;
+          if (createdAt != null && _onlineStartTime != null) {
+            if (createdAt.toDate().isBefore(_onlineStartTime!)) continue;
+          }
+
+          // 2. Skip if already declined by this driver
+          final declinedBy =
+              List<String>.from(tripData['declined_by'] as List? ?? []);
+          if (declinedBy.contains(_currentDriverId)) continue;
+
+          // 3. Skip if already has a driver assigned
+          if (tripData['driver_id'] != null) continue;
+
+          debugPrint('LIVE Trip received: $tripId');
+          _showIncomingRequest(tripId, tripData);
+          break; // show one request at a time
+        }
+      }
+    }, onError: (error) {
+      debugPrint('Firestore listen error: $error');
+    });
+  }
+
+  Future<void> _goOffline() async {
+    _tripSubscription?.cancel();
+    _tripSubscription = null;
+    _onlineStartTime = null;
+    _timer?.cancel();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('driver_is_online', false);
+
+    if (_currentDriverId.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('drivers')
+            .doc(_currentDriverId)
+            .set({
+          'is_online': false,
+          'status': 'offline',
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Firestore offline update failed: $e');
+      }
+    }
+
+    setState(() => isOnline = false);
   }
 
   String _formatDuration(Duration d) {
@@ -87,15 +161,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return '$h:$m:$s';
   }
 
+  void _showIncomingRequest(String tripId, Map<String, dynamic> tripData) {
+    if (!mounted) return;
+    
+    print("DEBUG: Navigating to Incoming Request Screen for trip: $tripId");
+
+    // Cancel subscription so we don't stack multiple screens
+    _tripSubscription?.cancel();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => IncomingRequestScreen(
+          tripId: tripId,
+          patientName: tripData['patient_name'] ?? 'Emergency Patient',
+          ambulanceType: tripData['ambulance_type'] ?? 'BLS',
+          pickupAddress: tripData['pickup']?['address'] ?? 'Toli Chowki, Hyderabad',
+          pickupLat: (tripData['pickup']?['lat'] ?? 17.4399).toDouble(),
+          pickupLng: (tripData['pickup']?['lng'] ?? 78.3813).toDouble(),
+          dropAddress: tripData['destination']?['address'] ?? 'Apollo Hospital',
+          dropLat: (tripData['destination']?['lat'] ?? 17.45).toDouble(),
+          dropLng: (tripData['destination']?['lng'] ?? 78.39).toDouble(),
+          estimatedFare: (tripData['estimated_fare'] ?? 450.0).toDouble(),
+          patientPhone: tripData['patient_phone'],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    ref.listen<TripData>(tripProvider, (previous, next) {
-      if (next.state == TripState.requestIncoming) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const IncomingRequestScreen()),
-        );
-      }
-    });
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -176,7 +271,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ),
                           const SizedBox(height: 16),
                           GestureDetector(
-                            onTap: _toggleOnline,
+                            onTap: _goOffline,
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -219,7 +314,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ),
                           const SizedBox(height: 20),
                           GestureDetector(
-                            onTap: _toggleOnline,
+                            onTap: _goOnline,
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(vertical: 16),

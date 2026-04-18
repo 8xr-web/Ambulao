@@ -7,7 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TripCompletedScreen extends ConsumerWidget {
-  const TripCompletedScreen({super.key});
+  final double fare;
+  final String dropAddress;
+
+  const TripCompletedScreen({
+    super.key,
+    this.fare = 0.0,
+    this.dropAddress = '',
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -70,7 +77,7 @@ class TripCompletedScreen extends ConsumerWidget {
                 children: [
                   _StatCard(
                     label: 'Fare Earned',
-                    value: '₹340',
+                    value: '₹${fare.toStringAsFixed(0)}',
                     icon: Icons.attach_money,
                     color: AppTheme.successGreen,
                   ),

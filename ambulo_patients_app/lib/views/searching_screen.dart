@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firestore_service.dart';
 import '../core/transitions.dart';
 import '../core/theme.dart';
 import '../models/booking_args.dart';
 import 'main_layout.dart';
-import 'ambulance_assigned_screen.dart';
+import 'ambulance_arriving_screen.dart';
+import 'ambulance_moving_screen.dart';
+import 'trip_completed_patient_screen.dart';
 
 class SearchingScreen extends StatefulWidget {
   final BookingArgs args;
@@ -16,7 +20,8 @@ class SearchingScreen extends StatefulWidget {
 
 class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProviderStateMixin {
   late AnimationController _sonarController;
-  Timer? _timer;
+  StreamSubscription<DocumentSnapshot>? _tripSubscription;
+  String? _currentTripId;
 
   @override
   void initState() {
@@ -27,21 +32,147 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
       duration: const Duration(seconds: 2),
     )..repeat();
     
-    // Auto-transition to Assigned after 3 seconds
-    _timer = Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        MainLayout.homeNavKey.currentState?.popUntil((route) => route.isFirst);
-        Navigator.of(context, rootNavigator: true).push(
-          SmoothPageRoute(page: AmbulanceAssignedScreen(args: widget.args)),
-        );
-      }
-    });
+    _initiateRealTrip();
+  }
+
+  Future<void> _initiateRealTrip() async {
+    try {
+      _currentTripId = await FirestoreService.createTripRequest(
+        ambulanceType: widget.args.ambulanceType,
+        // Mocked GPS coordinates for the prototype
+        pickup: {'address': widget.args.pickup, 'lat': 17.4399, 'lng': 78.3813},
+        destination: {'address': widget.args.destination, 'lat': 17.4500, 'lng': 78.3900},
+        paymentMethod: 'Cash',
+      );
+
+      _tripSubscription = FirestoreService.getTripStream(_currentTripId!).listen((snapshot) async {
+        if (!snapshot.exists || !mounted) return;
+
+        final data = snapshot.data() as Map<String, dynamic>;
+        final status = data['status'] as String? ?? 'searching';
+
+        // ── ACCEPTED ──────────────────────────────────────────
+        if (status == 'accepted') {
+          _tripSubscription?.cancel();
+          final driverId = data['driver_id'] as String? ?? '';
+          Map<String, dynamic> driverData = {};
+
+          if (driverId.isNotEmpty) {
+            final driverDoc = await FirebaseFirestore.instance
+                .collection('drivers')
+                .doc(driverId)
+                .get();
+            driverData = driverDoc.data() ?? {};
+          }
+
+          if (!mounted) return;
+          MainLayout.homeNavKey.currentState?.popUntil((route) => route.isFirst);
+          Navigator.of(context, rootNavigator: true).pushReplacement(
+            PageRouteBuilder(
+              transitionDuration: const Duration(milliseconds: 400),
+              pageBuilder: (context, animation, _) =>
+                  AmbulanceArrivingScreen(
+                tripId: _currentTripId!,
+                driverName: data['driver_name'] as String? ??
+                    driverData['name'] as String? ?? 'Driver',
+                driverPhone: data['driver_phone'] as String? ??
+                    driverData['phone'] as String? ?? '',
+                vehicleNumber: data['vehicle_number'] as String? ??
+                    driverData['vehicle_number'] as String? ?? '',
+                driverPhoto: driverData['photo_url'] as String? ?? '',
+                ambulanceType: widget.args.ambulanceType,
+                pickupAddress: widget.args.pickup,
+                dropAddress: widget.args.destination,
+                estimatedFare:
+                    ((data['estimated_fare'] ?? 350.0) as num).toDouble(),
+              ),
+              transitionsBuilder: (context, animation, _, child) =>
+                  SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 1),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: child,
+              ),
+            ),
+          );
+        }
+
+        // ── ON TRIP ───────────────────────────────────────────
+        if (status == 'on_trip') {
+          if (!mounted) return;
+          Navigator.of(context, rootNavigator: true).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => AmbulanceMovingScreen(
+                tripId: _currentTripId!,
+                driverName: data['driver_name'] as String? ?? 'Driver',
+                dropAddress:
+                    (data['destination'] as Map<String, dynamic>?)?['address']
+                            as String? ??
+                        widget.args.destination,
+                estimatedFare:
+                    ((data['estimated_fare'] ?? 350.0) as num).toDouble(),
+              ),
+            ),
+          );
+        }
+
+        // ── COMPLETED ─────────────────────────────────────────
+        if (status == 'completed') {
+          if (!mounted) return;
+          Navigator.of(context, rootNavigator: true).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => TripCompletedPatientScreen(
+                tripId: _currentTripId!,
+                driverName: data['driver_name'] as String? ?? 'Driver',
+                ambulanceType:
+                    data['ambulance_type'] as String? ?? widget.args.ambulanceType,
+                pickupAddress:
+                    (data['pickup'] as Map<String, dynamic>?)?['address']
+                            as String? ??
+                        widget.args.pickup,
+                dropAddress:
+                    (data['destination'] as Map<String, dynamic>?)?['address']
+                            as String? ??
+                        widget.args.destination,
+                totalFare: ((data['final_fare'] ??
+                        data['estimated_fare'] ?? 350.0) as num)
+                    .toDouble(),
+                paymentMethod:
+                    data['payment_method'] as String? ?? 'cash',
+              ),
+            ),
+          );
+        }
+
+        // ── CANCELLED ─────────────────────────────────────────
+        if (status == 'cancelled') {
+          _tripSubscription?.cancel();
+          if (!mounted) return;
+          Navigator.of(context, rootNavigator: true).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Trip was cancelled'),
+              backgroundColor: const Color(0xFFFF3B30),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(50)),
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint("Error creating trip request: $e");
+    }
   }
 
   @override
   void dispose() {
     _sonarController.dispose();
-    _timer?.cancel();
+    _tripSubscription?.cancel();
     super.dispose();
   }
 
@@ -209,7 +340,10 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
                      padding: const EdgeInsets.only(bottom: 96), // Clearance for the global pill
                      child: OutlinedButton(
                        onPressed: () {
-                         _timer?.cancel();
+                         if (_currentTripId != null) {
+                           FirestoreService.cancelTrip(_currentTripId!);
+                         }
+                         _tripSubscription?.cancel();
                          MainLayout.homeNavKey.currentState?.popUntil((route) => route.isFirst);
                        },
                        style: OutlinedButton.styleFrom(

@@ -1,10 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:ambulao_driver/core/theme.dart';
-
-import 'package:ambulao_driver/screens/start_trip_screen.dart';
+import 'package:ambulao_driver/screens/navigate_to_hospital_screen.dart';
 
 class PinScreen extends StatefulWidget {
-  const PinScreen({super.key});
+  final String tripId;
+  final String patientName;
+  final String dropAddress;
+  final double dropLat;
+  final double dropLng;
+  final double estimatedFare;
+
+  const PinScreen({
+    super.key,
+    this.tripId = '',
+    this.patientName = 'Patient',
+    this.dropAddress = '',
+    this.dropLat = 0,
+    this.dropLng = 0,
+    this.estimatedFare = 350.0,
+  });
 
   @override
   State<PinScreen> createState() => _PinScreenState();
@@ -21,7 +35,14 @@ class _PinScreenState extends State<PinScreen> {
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (_) => const StartTripScreen(),
+              builder: (_) => NavigateToHospitalScreen(
+                tripId: widget.tripId,
+                dropAddress: widget.dropAddress,
+                dropLat: widget.dropLat,
+                dropLng: widget.dropLng,
+                patientName: widget.patientName,
+                estimatedFare: widget.estimatedFare,
+              ),
             ),
           );
         });

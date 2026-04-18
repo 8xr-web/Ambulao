@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ambulao_driver/core/theme.dart';
-import 'package:ambulao_driver/providers/trip_provider.dart';
+import 'package:ambulao_driver/services/trip_service.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/trip_screen.dart';
 
-class NavigateToHospitalScreen extends ConsumerWidget {
-  const NavigateToHospitalScreen({super.key});
+class NavigateToHospitalScreen extends StatefulWidget {
+  final String tripId;
+  final String dropAddress;
+  final double dropLat;
+  final double dropLng;
+  final String patientName;
+  final double estimatedFare;
+
+  const NavigateToHospitalScreen({
+    super.key,
+    required this.tripId,
+    required this.dropAddress,
+    required this.dropLat,
+    required this.dropLng,
+    required this.patientName,
+    required this.estimatedFare,
+  });
 
   Future<void> _launchUrl(String url) async {
     final Uri uri = Uri.parse(url);
@@ -17,9 +31,40 @@ class NavigateToHospitalScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final trip = ref.watch(tripProvider).currentTrip;
+  State<NavigateToHospitalScreen> createState() =>
+      _NavigateToHospitalScreenState();
+}
 
+class _NavigateToHospitalScreenState extends State<NavigateToHospitalScreen> {
+  bool _isLoading = false;
+
+  Future<void> _startTrip() async {
+    setState(() => _isLoading = true);
+    try {
+      await TripService.startTrip(widget.tripId);
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TripScreen(
+            tripId: widget.tripId,
+            dropAddress: widget.dropAddress,
+            patientName: widget.patientName,
+            estimatedFare: widget.estimatedFare,
+          ),
+        ),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting trip: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: MapBackgroundMock(
@@ -39,7 +84,7 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
+                        color: Colors.black.withOpacity(0.08),
                         blurRadius: 16,
                         offset: const Offset(0, 4),
                       ),
@@ -66,7 +111,9 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              trip?.dropAddress ?? 'Yashoda Hospital',
+                              widget.dropAddress.isEmpty
+                                  ? 'Hospital'
+                                  : widget.dropAddress,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
@@ -74,9 +121,9 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            const Text(
-                              'Alexander Road, Somajiguda, Hyderabad 500082',
-                              style: TextStyle(
+                            Text(
+                              'Patient: ${widget.patientName}',
+                              style: const TextStyle(
                                 fontSize: 13,
                                 color: AppTheme.textSecondary,
                               ),
@@ -92,17 +139,16 @@ class NavigateToHospitalScreen extends ConsumerWidget {
               Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Bottom routing / start trip card
+                  // Bottom card
                   Container(
                     margin: const EdgeInsets.fromLTRB(12, 0, 12, 0),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
+                          top: Radius.circular(32)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
+                          color: Colors.black.withOpacity(0.1),
                           blurRadius: 24,
                           spreadRadius: 2,
                         ),
@@ -118,43 +164,32 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ETA & Distance
-                        Text(
-                          '${trip?.duration ?? "22 min"} · ${trip?.distance ?? "8.4 km"}',
-                          style: const TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0A1F44),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
+                        // Fare + Patient row
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            if (trip?.isEmergency ?? true)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFEEEA),
-                                  borderRadius: BorderRadius.circular(50),
-                                ),
-                                child: const Text(
-                                  'Emergency Trip',
-                                  style: TextStyle(
-                                    color: AppTheme.criticalRed,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            if (trip?.isEmergency ?? true) const SizedBox(width: 8),
                             Text(
-                              'Patient: ${trip?.patientName ?? "Rahul Kumar"}',
+                              'Patient: ${widget.patientName}',
                               style: const TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textSecondary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0A1F44),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F2FF),
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              child: Text(
+                                '₹${widget.estimatedFare.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  color: AppTheme.primaryBlue,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
                           ],
@@ -166,7 +201,8 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                           width: double.infinity,
                           height: 56,
                           child: ElevatedButton(
-                            onPressed: () => _showMapsActionSheet(context, trip?.dropLat ?? 0, trip?.dropLng ?? 0),
+                            onPressed: () => _showMapsActionSheet(
+                                context, widget.dropLat, widget.dropLng),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryBlue,
                               foregroundColor: Colors.white,
@@ -181,7 +217,7 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                                 Icon(Icons.navigation, size: 20),
                                 SizedBox(width: 8),
                                 Text(
-                                  "Navigate to Hospital",
+                                  'Navigate to Hospital',
                                   style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
@@ -193,33 +229,31 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 12),
 
-                        // Start Trip (Ghost Pill)
+                        // Start Trip button — calls TripService.startTrip
                         SizedBox(
                           width: double.infinity,
                           height: 56,
-                          child: TextButton(
-                            onPressed: () {
-                              ref.read(tripProvider.notifier).startTripToHospital();
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                  builder: (_) => const TripScreen(),
+                          child: _isLoading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                      color: AppTheme.primaryBlue))
+                              : TextButton(
+                                  onPressed: _startTrip,
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: AppTheme.primaryBlue,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(28),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Start Trip',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
-                              );
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.primaryBlue,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(28),
-                              ),
-                            ),
-                            child: const Text(
-                              "Start Trip",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -250,18 +284,16 @@ class NavigateToHospitalScreen extends ConsumerWidget {
               width: 48,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFDDE3EE),
-                borderRadius: BorderRadius.circular(10),
-              ),
+                  color: const Color(0xFFDDE3EE),
+                  borderRadius: BorderRadius.circular(10)),
             ),
             const SizedBox(height: 24),
             const Text(
               'Navigate with',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0A1F44),
-              ),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0A1F44)),
             ),
             const SizedBox(height: 24),
             _buildMapOption(
@@ -270,7 +302,8 @@ class NavigateToHospitalScreen extends ConsumerWidget {
               Icons.map_outlined,
               () {
                 Navigator.pop(context);
-                _launchUrl('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+                widget._launchUrl(
+                    'https://www.google.com/maps/search/?api=1&query=$lat,$lng');
               },
             ),
             const SizedBox(height: 12),
@@ -280,7 +313,7 @@ class NavigateToHospitalScreen extends ConsumerWidget {
               Icons.explore_outlined,
               () {
                 Navigator.pop(context);
-                _launchUrl('maps://?q=$lat,$lng');
+                widget._launchUrl('maps://?q=$lat,$lng');
               },
             ),
             const SizedBox(height: 12),
@@ -292,13 +325,11 @@ class NavigateToHospitalScreen extends ConsumerWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppTheme.textSecondary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(50),
-                  ),
+                      borderRadius: BorderRadius.circular(50)),
                 ),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
+                child: const Text('Cancel',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ),
             const SizedBox(height: 12),
@@ -308,12 +339,14 @@ class NavigateToHospitalScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildMapOption(BuildContext context, String title, IconData icon, VoidCallback onTap) {
+  Widget _buildMapOption(
+      BuildContext context, String title, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: const Color(0xFFF9FBFF),
           borderRadius: BorderRadius.circular(16),
@@ -326,16 +359,13 @@ class NavigateToHospitalScreen extends ConsumerWidget {
             Text(
               title,
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0A1F44),
-              ),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0A1F44)),
             ),
             const Spacer(),
-            const Icon(
-              Icons.chevron_right,
-              color: AppTheme.textSecondary,
-            ),
+            const Icon(Icons.chevron_right,
+                color: AppTheme.textSecondary),
           ],
         ),
       ),

@@ -1,10 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ambulao_driver/core/theme.dart';
+import 'package:ambulao_driver/services/trip_service.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/trip_completed_screen.dart';
 
-class TripScreen extends StatelessWidget {
-  const TripScreen({super.key});
+class TripScreen extends StatefulWidget {
+  final String tripId;
+  final String dropAddress;
+  final String patientName;
+  final double estimatedFare;
+
+  const TripScreen({
+    super.key,
+    required this.tripId,
+    required this.dropAddress,
+    required this.patientName,
+    required this.estimatedFare,
+  });
+
+  @override
+  State<TripScreen> createState() => _TripScreenState();
+}
+
+class _TripScreenState extends State<TripScreen> {
+  bool _isLoading = false;
+
+  Future<void> _endTrip() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final driverId = prefs.getString('driver_uid') ?? '';
+
+      await TripService.endTrip(
+        tripId: widget.tripId,
+        driverId: driverId,
+        fare: widget.estimatedFare,
+      );
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TripCompletedScreen(
+            fare: widget.estimatedFare,
+            dropAddress: widget.dropAddress,
+          ),
+        ),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error ending trip: $e')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +76,7 @@ class TripScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
+                        color: Colors.black.withOpacity(0.08),
                         blurRadius: 16,
                         offset: const Offset(0, 4),
                       ),
@@ -48,22 +98,24 @@ class TripScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 14),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'KIMS Hospital',
-                              style: TextStyle(
+                              widget.dropAddress.isEmpty
+                                  ? 'Destination'
+                                  : widget.dropAddress,
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF0A1F44),
                               ),
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
-                              'Secunderabad',
-                              style: TextStyle(
+                              'Patient: ${widget.patientName}',
+                              style: const TextStyle(
                                 fontSize: 13,
                                 color: AppTheme.textSecondary,
                               ),
@@ -86,7 +138,7 @@ class TripScreen extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
+                      color: Colors.black.withOpacity(0.10),
                       blurRadius: 24,
                       spreadRadius: 2,
                     ),
@@ -116,9 +168,9 @@ class TripScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Rahul Kumar',
-                          style: TextStyle(
+                        Text(
+                          widget.patientName,
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
                             color: AppTheme.primaryBlue,
@@ -126,15 +178,13 @@ class TripScreen extends StatelessWidget {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFEEEA),
                             borderRadius: BorderRadius.circular(50),
                           ),
                           child: const Text(
-                            'Emergency Trip',
+                            'On Trip',
                             style: TextStyle(
                               color: AppTheme.criticalRed,
                               fontSize: 12,
@@ -145,53 +195,50 @@ class TripScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      '23 min · 8.5 km',
-                      style: TextStyle(
-                        fontSize: 28,
+                    Text(
+                      '₹${widget.estimatedFare.toStringAsFixed(0)} estimated',
+                      style: const TextStyle(
+                        fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF0A1F44),
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'To destination',
-                      style: TextStyle(
+                    Text(
+                      'To: ${widget.dropAddress}',
+                      style: const TextStyle(
                         fontSize: 14,
                         color: AppTheme.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 20),
 
                     // END TRIP
                     SizedBox(
                       width: double.infinity,
                       height: 56,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (_) => const TripCompletedScreen(),
+                      child: _isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                  color: AppTheme.primaryBlue))
+                          : ElevatedButton(
+                              onPressed: _endTrip,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryBlue,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(28),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                'END TRIP',
+                                style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5),
+                              ),
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryBlue,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'END TRIP',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
                     ),
                   ],
                 ),

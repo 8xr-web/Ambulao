@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "604865127689",
+    "firebase_url": "https://ambulao-7980d-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "ambulao-7980d",
+    "storage_bucket": "ambulao-7980d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:604865127689:android:6e798d59495eb33419dfd8",
+        "android_client_info": {
+          "package_name": "com.ambulao.patientapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcNFVEbOF7eAKtIRZ7rqZBcLn1odtL5a4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

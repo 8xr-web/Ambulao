@@ -1,4 +1,4 @@
-package com.example.ambulao_driver
+package com.ambulao.patientapp
 
 import io.flutter.embedding.android.FlutterActivity
 
