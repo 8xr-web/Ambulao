@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ambulao_driver/core/theme.dart';
 import 'package:ambulao_driver/screens/permissions_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phone;
-  const OtpScreen({super.key, required this.phone});
+  final String verificationId;
+  const OtpScreen({super.key, required this.phone, required this.verificationId});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -50,18 +52,48 @@ class _OtpScreenState extends State<OtpScreen> {
   void _verify() async {
     setState(() => _isVerifying = true);
     
-    // Save session flag for persistence
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('driver_uid', widget.phone);
-    await prefs.setBool('is_logged_in', true);
+    final otp = _controllers.map((c) => c.text).join();
+    final credential = PhoneAuthProvider.credential(
+      verificationId: widget.verificationId,
+      smsCode: otp,
+    );
 
-    Future.delayed(const Duration(milliseconds: 900), () {
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+      
+      if (user != null) {
+        // Save session flag for persistence
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('driver_uid', user.uid);
+        await prefs.setBool('is_logged_in', true);
+      }
+
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const PermissionsScreen()),
         (_) => false,
       );
-    });
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+      
+      String msg = e.message ?? 'Verification failed';
+      if (e.code == 'invalid-verification-code') {
+        msg = 'Wrong OTP. Please try again.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: const Color(0xFFFF3B30),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+    }
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ambulao_driver/core/theme.dart';
 import 'package:ambulao_driver/screens/otp_screen.dart';
 import 'package:ambulao_driver/screens/main_layout.dart';
@@ -16,7 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _isGoogleLoading = false;
 
-  void _sendOtp() {
+  Future<void> _sendOtp() async {
     if (_phoneController.text.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a valid 10-digit number')),
@@ -24,15 +25,32 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
     setState(() => _isLoading = true);
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => OtpScreen(phone: '+91 ${_phoneController.text}'),
-        ),
-      );
-    });
+
+    await FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: '+91${_phoneController.text.trim()}',
+      timeout: const Duration(seconds: 60),
+      verificationCompleted: (PhoneAuthCredential _) {},
+      verificationFailed: (FirebaseAuthException e) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Verification failed')),
+        );
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OtpScreen(
+              phone: '+91 ${_phoneController.text}',
+              verificationId: verificationId,
+            ),
+          ),
+        );
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {},
+    );
   }
 
   void _signInWithGoogle() {

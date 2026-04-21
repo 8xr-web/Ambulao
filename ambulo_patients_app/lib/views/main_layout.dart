@@ -5,7 +5,6 @@ import 'home_screen.dart';
 import 'location_selection_screen.dart';
 import 'ambulance_selection_screen.dart';
 import 'searching_screen.dart';
-import 'ambulance_assigned_screen.dart';
 import 'booking_history_screen.dart';
 import 'profile_screen.dart';
 import 'panic_mode_screen.dart';
@@ -105,9 +104,6 @@ class MainLayoutState extends State<MainLayout> with SingleTickerProviderStateMi
                           break;
                         case '/finding':
                           page = SearchingScreen(args: settings.arguments as BookingArgs? ?? const BookingArgs());
-                          break;
-                        case '/assigned':
-                          page = AmbulanceAssignedScreen(args: settings.arguments as BookingArgs? ?? const BookingArgs());
                           break;
                         default:
                           page = const HomeScreen();

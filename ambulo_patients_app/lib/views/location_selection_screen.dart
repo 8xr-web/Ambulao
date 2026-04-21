@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../core/theme.dart';
 import '../core/transitions.dart';
 import '../models/booking_args.dart';
@@ -150,16 +151,15 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
           Positioned(
             top: 0, left: 0, right: 0,
             height: mediaQuery.size.height * 0.46,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFFD1E8C5),
-                image: DecorationImage(
-                  image: NetworkImage('https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/78.3813,17.4398,13/600x400?access_token=pk.demo'),
-                  fit: BoxFit.cover,
-                  onError: _mapError,
-                ),
+            child: const GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: LatLng(17.3850, 78.4867),
+                zoom: 13,
               ),
-              child: CustomPaint(painter: _MapFallbackPainter()),
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
             ),
           ),
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../core/app_strings.dart';
 import '../core/theme.dart';
 import 'main_layout.dart';
@@ -70,14 +71,15 @@ class _NurseSearchingScreenState extends State<NurseSearchingScreen>
             left: 0,
             right: 0,
             bottom: MediaQuery.of(context).size.height * 0.45,
-            child: Container(
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: NetworkImage(
-                      'https://static-maps.yandex.ru/1.x/?lang=en_US&ll=78.3813,17.4398&z=13&l=map&size=600,450'),
-                  fit: BoxFit.cover,
-                ),
+            child: const GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: LatLng(17.3850, 78.4867),
+                zoom: 13,
               ),
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
             ),
           ),
           Positioned(

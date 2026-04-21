@@ -1,13 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/booking_args.dart';
 import 'main_layout.dart';
 import '../core/transitions.dart';
 import 'faq_screen.dart';
 
 class TripCompletedScreen extends StatefulWidget {
-  final BookingArgs args;
-  const TripCompletedScreen({super.key, required this.args});
+  final String tripId;
+  final String driverName;
+  final String ambulanceType;
+  final String pickupAddress;
+  final String dropAddress;
+  final double totalFare;
+  final String paymentMethod;
+
+  const TripCompletedScreen({
+    super.key,
+    required this.tripId,
+    required this.driverName,
+    required this.ambulanceType,
+    required this.pickupAddress,
+    required this.dropAddress,
+    required this.totalFare,
+    required this.paymentMethod,
+  });
 
   @override
   State<TripCompletedScreen> createState() => _TripCompletedScreenState();
@@ -34,7 +49,7 @@ class _TripCompletedScreenState extends State<TripCompletedScreen> {
   }
 
   String get _totalDisplay {
-    final base = int.tryParse(widget.args.fare.replaceAll('₹', '').replaceAll(',', '')) ?? 0;
+    final base = widget.totalFare.toInt();
     return '₹${base + _tipAmount}';
   }
 
@@ -250,27 +265,27 @@ class _TripCompletedScreenState extends State<TripCompletedScreen> {
       const SizedBox(height: 10),
       Text(_totalDisplay, style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w900, letterSpacing: -1, height: 1.0)),
       const SizedBox(height: 6),
-      Text(widget.args.serviceName, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+      Text(widget.ambulanceType, style: const TextStyle(color: Colors.white70, fontSize: 13)),
     ]),
   );
 
   Widget _buildFareBreakdownCard() => Container(
     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
     child: Column(children: [
-      _buildFareRow('Distance', '3.2 km'),
+      _buildFareRow('Ambulance Type', widget.ambulanceType),
       const Divider(height: 1, color: Color(0xFFF0F2F5)),
-      _buildFareRow('Duration', '18 min'),
+      _buildFareRow('Driver', widget.driverName),
       const Divider(height: 1, color: Color(0xFFF0F2F5)),
-      _buildFareRow('Base Fare', widget.args.fare),
+      _buildFareRow('Base Fare', '₹${widget.totalFare.toStringAsFixed(0)}'),
       const Divider(height: 1, color: Color(0xFFF0F2F5)),
-      _buildFareRow('GST (5%)', '₹49'),
+      _buildFareRow('Payment', widget.paymentMethod.toUpperCase()),
       const Divider(height: 1, color: Color(0xFFF0F2F5)),
       Padding(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
-          _buildLocationRow(Icons.location_on_outlined, widget.args.pickup),
+          _buildLocationRow(Icons.location_on_outlined, widget.pickupAddress.isNotEmpty ? widget.pickupAddress : 'Pickup location'),
           const SizedBox(height: 12),
-          _buildLocationRow(Icons.local_hospital_outlined, widget.args.destination.split(',')[0], filled: true),
+          _buildLocationRow(Icons.local_hospital_outlined, widget.dropAddress.isNotEmpty ? widget.dropAddress.split(',')[0] : 'Destination', filled: true),
         ]),
       ),
     ]),

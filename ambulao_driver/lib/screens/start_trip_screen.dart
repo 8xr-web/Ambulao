@@ -4,7 +4,22 @@ import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/navigate_to_hospital_screen.dart';
 
 class StartTripScreen extends StatelessWidget {
-  const StartTripScreen({super.key});
+  final String tripId;
+  final String patientName;
+  final String dropAddress;
+  final double dropLat;
+  final double dropLng;
+  final double estimatedFare;
+
+  const StartTripScreen({
+    super.key,
+    required this.tripId,
+    required this.patientName,
+    required this.dropAddress,
+    required this.dropLat,
+    required this.dropLng,
+    required this.estimatedFare,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -68,10 +83,10 @@ class StartTripScreen extends StatelessWidget {
                           Container(
                             width: 28, height: 28,
                             decoration: const BoxDecoration(color: AppTheme.primaryBlue, shape: BoxShape.circle),
-                            child: const Center(child: Text('RK', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))),
+                            child: Center(child: Text(patientName.isNotEmpty ? patientName.substring(0, 2).toUpperCase() : 'RK', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))),
                           ),
                           const SizedBox(width: 8),
-                          const Text('Rahul Kumar', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0A1F44))),
+                          Text(patientName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0A1F44))),
                         ],
                       ),
                     ),
@@ -82,7 +97,14 @@ class StartTripScreen extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const NavigateToHospitalScreen()),
+                            MaterialPageRoute(builder: (_) => NavigateToHospitalScreen(
+                              tripId: tripId,
+                              dropAddress: dropAddress,
+                              dropLat: dropLat,
+                              dropLng: dropLng,
+                              patientName: patientName,
+                              estimatedFare: estimatedFare,
+                            )),
                           );
                         },
                         style: ElevatedButton.styleFrom(

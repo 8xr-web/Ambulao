@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
-import '../models/booking_args.dart';
 import 'trip_completed_screen.dart';
 import 'home_screen.dart';
 import 'booking_history_screen.dart';
@@ -10,533 +11,493 @@ import 'panic_mode_screen.dart';
 import 'profile_screen.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
-  const LiveTrackingScreen({super.key});
+  final String tripId;
+  final String driverName;
+  final String driverPhone;
+  final String vehicleNumber;
+  final String ambulanceType;
+  final String dropAddress;
+  final double estimatedFare;
+
+  const LiveTrackingScreen({
+    super.key,
+    required this.tripId,
+    required this.driverName,
+    required this.driverPhone,
+    required this.vehicleNumber,
+    required this.ambulanceType,
+    required this.dropAddress,
+    required this.estimatedFare,
+  });
 
   @override
   State<LiveTrackingScreen> createState() => _LiveTrackingScreenState();
 }
 
-class _LiveTrackingScreenState extends State<LiveTrackingScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  late Animation<double> _pulseAnimation;
+class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
+  StreamSubscription<DocumentSnapshot>? _tripSubscription;
 
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+    _listenForCompletion();
+  }
 
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
-    );
+  void _listenForCompletion() {
+    if (widget.tripId.isEmpty) return;
+    _tripSubscription = FirebaseFirestore.instance
+        .collection('trips')
+        .doc(widget.tripId)
+        .snapshots()
+        .listen((snapshot) {
+      if (!snapshot.exists || !mounted) return;
 
-    // Simulate arriving at destination after 10 seconds for demo purposes
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const TripCompletedScreen(args: BookingArgs())),
+      final data = snapshot.data() as Map<String, dynamic>;
+      final status = data['status'] as String? ?? 'on_trip';
+
+      if (status == 'completed') {
+        _tripSubscription?.cancel();
+        if (!mounted) return;
+
+        final totalFare = ((data['final_fare'] ??
+                data['estimated_fare'] ??
+                widget.estimatedFare) as num)
+            .toDouble();
+
+        final pickupAddress =
+            (data['pickup'] as Map<String, dynamic>?)?['address'] as String? ??
+                '';
+        final dropAddress =
+            (data['destination'] as Map<String, dynamic>?)?['address']
+                    as String? ??
+                widget.dropAddress;
+        final paymentMethod =
+            data['payment_method'] as String? ?? 'cash';
+        final ambulanceType =
+            data['ambulance_type'] as String? ?? widget.ambulanceType;
+
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 400),
+            pageBuilder: (context, animation, _) => TripCompletedScreen(
+              tripId: widget.tripId,
+              driverName: widget.driverName,
+              ambulanceType: ambulanceType,
+              pickupAddress: pickupAddress,
+              dropAddress: dropAddress,
+              totalFare: totalFare,
+              paymentMethod: paymentMethod,
+            ),
+            transitionsBuilder: (context, animation, _, child) =>
+                FadeTransition(opacity: animation, child: child),
+          ),
         );
+      } else if (status == 'cancelled') {
+        _tripSubscription?.cancel();
+        if (!mounted) return;
+        Navigator.of(context, rootNavigator: true)
+            .popUntil((route) => route.isFirst);
+        _showToast('Trip was cancelled', isError: true);
       }
+    }, onError: (e) {
+      debugPrint('LiveTrackingScreen listener error: $e');
     });
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _tripSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _callDriver() async {
+    if (widget.driverPhone.isEmpty) {
+      _showToast("No driver phone number available", isError: true);
+      return;
+    }
+    final uri = Uri(scheme: 'tel', path: widget.driverPhone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      _showToast("Unable to open phone dialer", isError: true);
+    }
+  }
+
+  void _showToast(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: isError ? const Color(0xFFEF4444) : const Color(0xFF12B76A),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final mapHeight = MediaQuery.of(context).size.height * 0.44;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Full Screen Map
-          Positioned.fill(
-            child: FlutterMap(
-              options: const MapOptions(
-                initialCenter: LatLng(37.7858,
-                    -122.4064), // Used San Francisco coordinates as an example
-                initialZoom: 15.0,
-                interactionOptions:
-                    InteractionOptions(flags: InteractiveFlag.all),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.flutter_hello_world',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: const LatLng(37.7858, -122.4064),
-                      width: 80,
-                      height: 80,
-                      child: AnimatedBuilder(
-                        animation: _pulseAnimation,
-                        builder: (context, child) {
-                          return Transform.scale(
-                            scale: _pulseAnimation.value,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryBlue.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.15),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 4)),
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.local_shipping,
-                                      color: AppColors.primaryBlue, size: 24),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Top Navigation Elements
+          // ─── MAP (top 44%) ────────────────────────────────────────────────
           Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Back Button
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4))
-                        ],
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.chevron_left,
-                            color: AppColors.textPrimary),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-
-                    // ETA Pill
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 32, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4))
-                        ],
-                      ),
-                      child: const Column(
-                        children: [
-                          Text(
-                            "ESTIMATED ARRIVAL",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10,
-                                color: AppColors.textSecondary,
-                                letterSpacing: 1),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            "05 : 24",
-                            style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 18,
-                                color: AppColors.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Cancel Button
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.errorRed,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                              color: AppColors.errorRed.withValues(alpha: 0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4))
-                        ],
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            top: 0, left: 0, right: 0,
+            height: mapHeight,
+             child: const GoogleMap(
+               initialCameraPosition: CameraPosition(
+                 target: LatLng(17.3850, 78.4867),
+                 zoom: 13,
+               ),
+               zoomControlsEnabled: false,
+               myLocationButtonEnabled: false,
+               mapToolbarEnabled: false,
+               compassEnabled: false,
+             ),
           ),
-
-          // Floating Map Action Buttons
+          
+          // Floating Bottom Navigation Pill (like original tracking screen)
           Positioned(
-            right: 16,
-            bottom: 320, // Above the driver card
-            child: Column(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4))
-                    ],
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.near_me_outlined,
-                        color: AppColors.primaryBlue),
-                    onPressed: () {},
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4))
-                    ],
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.show_chart,
-                        color: AppColors
-                            .primaryBlue), // Pulse line icon equivalent
-                    onPressed: () {},
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Bottom Info Card & Nav Pill Container
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Driver Info Card
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Container(
-                    decoration: BoxDecoration(
+             top: MediaQuery.of(context).padding.top + 10,
+             left: 16,
+             child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                   width: 44,
+                   height: 44,
+                   decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(14),
                       boxShadow: [
-                        BoxShadow(
+                         BoxShadow(
                             color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 20,
-                            offset: const Offset(0, 5)),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Blue Header
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 16),
-                          decoration: const BoxDecoration(
-                            color: AppColors.primaryBlue,
-                            borderRadius:
-                                BorderRadius.vertical(top: Radius.circular(28)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.2),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.show_chart,
-                                    color: Colors.white, size: 16),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Text(
-                                  "MEDICAL TEAM PREPARED",
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                      letterSpacing: 0.5),
-                                ),
-                              ),
-                              const Text(
-                                "DETAILS",
-                                style: TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
-                                    letterSpacing: 0.5,
-                                    decoration: TextDecoration.underline),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // Driver Info Body
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 50,
-                                    height: 50,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.lightBlueAccent
-                                          .withValues(alpha: 0.5),
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: const Icon(Icons.local_shipping,
-                                        color: AppColors.primaryBlue, size: 28),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  const Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text("ICU Ambulance 741",
-                                            style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w800,
-                                                color: AppColors.textPrimary)),
-                                        SizedBox(height: 4),
-                                        Text("DRIVER: MARK JOHNSON",
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                letterSpacing: 0.5,
-                                                color:
-                                                    AppColors.textSecondary)),
-                                      ],
-                                    ),
-                                  ),
-                                  const Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Icon(Icons.star,
-                                              color: AppColors.primaryBlue,
-                                              size: 16),
-                                          SizedBox(width: 4),
-                                          Text("4.9",
-                                              style: TextStyle(
-                                                  fontWeight: FontWeight.w800,
-                                                  color:
-                                                      AppColors.primaryBlue)),
-                                        ],
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text("AB-4567",
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                              color: AppColors.textSecondary)),
-                                    ],
-                                  )
-                                ],
-                              ),
-                              const SizedBox(height: 24),
-
-                              // Action Buttons
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: SizedBox(
-                                      height: 50,
-                                      child: OutlinedButton(
-                                        onPressed: () =>
-                                            Navigator.of(context).pop(),
-                                        style: OutlinedButton.styleFrom(
-                                          side: const BorderSide(
-                                              color: AppColors.primaryBlue,
-                                              width: 1.5),
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(16)),
-                                        ),
-                                        child: const Text("CANCEL",
-                                            style: TextStyle(
-                                                color: AppColors.primaryBlue,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14)),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    flex: 2,
-                                    child: SizedBox(
-                                      height: 50,
-                                      child: ElevatedButton.icon(
-                                        onPressed: () {},
-                                        icon: const Icon(Icons.phone_outlined,
-                                            color: Colors.white, size: 18),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              AppColors.primaryBlue,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(16)),
-                                        ),
-                                        label: const Text("CALL\nDRIVER",
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                                height: 1.1)),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4)
+                         )
+                      ]
+                   ),
+                   child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
                 ),
+             )
+          ),
 
-                // Floating Bottom Navigation Pill (from Image 4, if needed here or on another screen)
-                // The provided Live Tracking Screen image doesn't show the nav pill but let's assume it should exist at the bottom
-                // The third provided image has a bottom pill. Wait, the third image is actually... let me check the image.
-                // Image 3 contains the pill "home, history, alert, profile".
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.only(
-                        top: 16, bottom: 16, left: 16, right: 16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(40),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10))
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.home_outlined),
-                            color: AppColors.textSecondary,
-                            onPressed: () {
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                    builder: (context) => const HomeScreen()),
-                              );
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.history),
-                            color: AppColors.textSecondary,
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        const BookingHistoryScreen()),
-                              );
-                            },
-                          ),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryBlue,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                    color:
-                                        AppColors.primaryBlue.withValues(alpha: 0.3),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4))
-                              ],
-                            ),
-                            child: IconButton(
-                              icon: const Icon(Icons.error_outline),
-                              color: Colors.white,
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                      builder: (context) =>
-                                          const PanicModeScreen()),
-                                );
-                              },
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.person_outline),
-                            color: AppColors.textSecondary,
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (context) =>
-                                        const ProfileScreen()),
-                              );
-                            },
-                          ),
-                        ],
+          // ─── DRAGGABLE BOTTOM SHEET ──────────────────────────────────
+          DraggableScrollableSheet(
+            initialChildSize: 0.58,
+            minChildSize: 0.38,
+            maxChildSize: 0.85,
+            snap: true,
+            snapSizes: const [0.38, 0.58, 0.85],
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 24, offset: Offset(0, -6))],
+                ),
+                child: Column(
+                  children: [
+                    // Drag handle
+                    const SizedBox(height: 12),
+                    Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFDDE1E7), borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 16),
+
+                    // Scrollable content
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          children: [
+                            // ── A. Driver / Journey Card ──
+                            _buildDriverCard(),
+                            const SizedBox(height: 12),
+
+                            // ── B. Hospital Destination Card ──
+                            _buildHospitalCard(),
+                            const SizedBox(height: 12),
+
+                            // ── C. Metrics Row ──
+                            _buildMetricsRow(),
+                            const SizedBox(height: 12),
+
+                            // ── D. Tracking Notification ──
+                            _buildTrackingRow(),
+                            const SizedBox(height: 12),
+
+                            // ── E. Share Button ──
+                            _buildShareButton(),
+                            const SizedBox(height: 36),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Driver + Journey Card ───────────────────────────────────────
+  Widget _buildDriverCard() {
+    String typeLabel = 'BLS';
+    Color badgeColor = const Color(0xFF1A6FE8);
+    if (widget.ambulanceType == 'ALS') { typeLabel = 'ALS'; badgeColor = const Color(0xFF003366); }
+    else if (widget.ambulanceType == 'Bike') { typeLabel = 'Ambu Bike'; badgeColor = const Color(0xFF10B981); }
+    else if (widget.ambulanceType == 'LastRide') { typeLabel = 'Last Ride'; badgeColor = const Color(0xFF6B7280); }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD6E4FF), width: 1.5),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46, height: 46,
+                decoration: BoxDecoration(color: const Color(0xFF1A6FE8), borderRadius: BorderRadius.circular(13)),
+                child: Center(child: Text(widget.driverName.isNotEmpty ? widget.driverName[0].toUpperCase() : 'DK', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.driverName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0A0F1E))),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Text('$typeLabel Paramedic · ', style: const TextStyle(color: Color(0xFF6B7A99), fontSize: 12)),
+                        const Icon(Icons.star_rounded, color: Color(0xFFFBBF24), size: 14),
+                        const Text(' 4.9', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 12)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text('${widget.vehicleNumber} · ${widget.ambulanceType == 'Bike' ? 'Honda Activa' : 'Mahindra Bolero'}',
+                        style: const TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                     onTap: _callDriver,
+                    child: Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(color: const Color(0xFFEEF4FF), borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.phone, color: Color(0xFF1A6FE8), size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(100)),
+                    child: const Text('En Route', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+          const Divider(color: Color(0xFFF0F2F5), height: 1),
+          const SizedBox(height: 12),
+
+          // Journey progress row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Pickup', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 12)),
+              Text(widget.dropAddress.isNotEmpty ? widget.dropAddress : 'Hospital', style: const TextStyle(color: Color(0xFF1A6FE8), fontSize: 12, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Stack(
+              children: [
+                Container(height: 6, decoration: BoxDecoration(color: const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(4))),
+                FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: 0.34,
+                  child: Container(height: 6, decoration: BoxDecoration(color: const Color(0xFF1A6FE8), borderRadius: BorderRadius.circular(4))),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('1.1 km covered', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+              Text('2.1 km remaining', style: TextStyle(color: Color(0xFF1A6FE8), fontSize: 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Hospital Destination Card ─────────────────────────────────────────────
+  Widget _buildHospitalCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF4FF),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A6FE8),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(Icons.local_hospital_outlined, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.dropAddress.isNotEmpty ? widget.dropAddress : 'Hospital',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0A0F1E)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                const Text('Heading to destination',
+                    style: TextStyle(color: Color(0xFF6B7A99), fontSize: 12)),
+              ],
+            ),
+          ),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text('~', style: TextStyle(color: Color(0xFF1A6FE8), fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text('6', style: TextStyle(color: Color(0xFF1A6FE8), fontSize: 28, fontWeight: FontWeight.w900, height: 1.1)),
+                  ],
+                ),
+                Text('min away', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Info Cards Row ────────────────────────────────────────────────────────
+  Widget _buildMetricsRow() {
+    return Row(
+      children: [
+        // Distance card
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFF),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Total distance', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+                const SizedBox(height: 6),
+                const Text('3.2 km', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0A0F1E))),
+                const SizedBox(height: 2),
+                Text('Est. ₹${widget.estimatedFare.toInt()} fare', style: const TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Emergency contact card
+        Expanded(
+          child: GestureDetector(
+             onTap: () => _showToast('Calling Emergency Contact...'),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFF),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Emergency contact', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+                  SizedBox(height: 6),
+                  Text('Priya', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0A0F1E))),
+                  SizedBox(height: 2),
+                  Text('+91 98765 43210', style: TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Tracking Notification ─────────────────────────────────────────────────
+  Widget _buildTrackingRow() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF5),
+        borderRadius: BorderRadius.circular(100),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 8, height: 8,
+            decoration: const BoxDecoration(color: Color(0xFF12B76A), shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Live tracking enabled',
+            style: TextStyle(color: Color(0xFF065F46), fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Share Live Location Button ─────────────────────────────────────────────
+  Widget _buildShareButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: () => _showToast('Live location shared!'),
+        icon: const Icon(Icons.share_outlined, size: 18),
+        label: const Text('Share live location',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF1A6FE8),
+          side: const BorderSide(color: Color(0xFFD6E4FF), width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+          backgroundColor: Colors.white,
+        ),
       ),
     );
   }

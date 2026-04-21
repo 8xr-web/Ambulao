@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../viewmodels/auth_view_model.dart';
 import '../core/transitions.dart';
@@ -17,8 +19,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _phoneController = TextEditingController();
+  bool _isSending = false;
 
-  bool get _canSubmit => _phoneController.text.length == 10;
+  bool get _canSubmit => _phoneController.text.length == 10 && !_isSending;
 
   @override
   void dispose() {
@@ -26,12 +29,86 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _sendOtp() async {
+    if (!_canSubmit) return;
+    setState(() => _isSending = true);
+
+    final phone = '+91${_phoneController.text.trim()}';
+
+    await FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: phone,
+      timeout: const Duration(seconds: 60),
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        // Auto-retrieval on Android (only on real devices)
+        await _signInWithCredential(credential);
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        if (!mounted) return;
+        setState(() => _isSending = false);
+        String msg = 'Verification failed. Please try again.';
+        if (e.code == 'invalid-phone-number') {
+          msg = 'This number is not registered for access.';
+        } else if (e.code == 'too-many-requests') {
+          msg = 'Too many attempts. Please try again later.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xFFFF3B30),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+          ),
+        );
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        if (!mounted) return;
+        setState(() => _isSending = false);
+        Navigator.push(
+          context,
+          SmoothPageRoute(
+            page: OtpScreen(
+              phone: _phoneController.text.trim(),
+              verificationId: verificationId,
+            ),
+          ),
+        );
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {
+        // No-op — user will type OTP manually
+      },
+    );
+  }
+
+  Future<void> _signInWithCredential(PhoneAuthCredential credential) async {
+    try {
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('patient_uid', user.uid);
+        await prefs.setString(
+            'patient_phone', user.phoneNumber ?? '');
+        await prefs.setInt(
+            'session_created_at',
+            DateTime.now().millisecondsSinceEpoch);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        SmoothPageRoute(page: const MainLayout()),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A3AAD), // Match top section avoiding gap
+      backgroundColor: const Color(0xFF0A3AAD),
       resizeToAvoidBottomInset: true,
       body: Column(
         children: [
@@ -45,7 +122,6 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Ambulance icon
                   Container(
                     width: 90,
                     height: 90,
@@ -53,7 +129,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+                          color: Colors.white.withValues(alpha: 0.2),
+                          width: 1.5),
                     ),
                     child: Center(
                       child: Container(
@@ -72,8 +149,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // 'Ambulao' with 'lao' in light blue
                   RichText(
                     text: const TextSpan(
                       style: TextStyle(
@@ -92,7 +167,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-
                   Text(
                     'Emergency care, one tap away',
                     style: TextStyle(
@@ -106,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-          // WHITE CARD SECTION — 55% of screen
+          // WHITE CARD SECTION
           Expanded(
             child: Container(
               width: double.infinity,
@@ -115,13 +189,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(32)),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Heading
                       Text(
                         AppLocalizations.of(context)!.enterMobileNumber,
                         style: const TextStyle(
@@ -201,52 +275,57 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 54,
                         child: ElevatedButton(
-                          onPressed: _canSubmit
-                              ? () => Navigator.push(
-                                    context,
-                                    SmoothPageRoute(
-                                      page: OtpScreen(
-                                          phone: _phoneController.text),
-                                    ),
-                                  )
-                              : null,
+                          onPressed: _canSubmit ? _sendOtp : null,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _canSubmit ? const Color(0xFF1A6FE8) : const Color(0xFF98B8EB),
+                            backgroundColor: _canSubmit
+                                ? const Color(0xFF1A6FE8)
+                                : const Color(0xFF98B8EB),
                             disabledBackgroundColor: const Color(0xFF98B8EB),
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  AppLocalizations.of(context)!.sendOtp,
-                                  style: const TextStyle(
+                          child: _isSending
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
                                     color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
                                   ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      AppLocalizations.of(context)!.sendOtp,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(
+                                      Icons.arrow_forward,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.arrow_forward,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
+                      ),
                       const SizedBox(height: 20),
 
                       // OR divider
                       const Row(
                         children: [
-                          Expanded(child: Divider(color: Color(0xFFE8EFF8))),
+                          Expanded(
+                              child: Divider(color: Color(0xFFE8EFF8))),
                           Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 14),
+                            padding:
+                                EdgeInsets.symmetric(horizontal: 14),
                             child: Text(
                               'or',
                               style: TextStyle(
@@ -255,7 +334,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ),
-                          Expanded(child: Divider(color: Color(0xFFE8EFF8))),
+                          Expanded(
+                              child: Divider(color: Color(0xFFE8EFF8))),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -314,7 +394,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       Center(
                         child: TextButton(
                           onPressed: () async {
-                            await context.read<AuthViewModel>().continueAsGuest();
+                            await context
+                                .read<AuthViewModel>()
+                                .continueAsGuest();
                             if (!context.mounted) return;
                             Navigator.of(context).pushReplacement(
                               SmoothPageRoute(
@@ -325,7 +407,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: const Text(
                             'Continue as Guest for Emergency',
                             style: TextStyle(
-                              color: Color(0xFFF04438), // Matches red in image
+                              color: Color(0xFFF04438),
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -334,7 +416,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 4),
 
-                      // Caption
                       const Center(
                         child: Text(
                           'Your number is only used for booking',
@@ -356,7 +437,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signInWithGoogle() async {
-    final email = await context.read<AuthViewModel>().signInWithGoogle();
+    final email =
+        await context.read<AuthViewModel>().signInWithGoogle();
     if (email != null && mounted) {
       Navigator.of(context).pushReplacement(
         SmoothPageRoute(
@@ -365,7 +447,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Google sign in failed. Try again.')),
+        const SnackBar(
+            content: Text('Google sign in failed. Try again.')),
       );
     }
   }
@@ -375,7 +458,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
 class OtpScreen extends StatefulWidget {
   final String phone;
-  const OtpScreen({required this.phone, super.key});
+  final String verificationId;
+
+  const OtpScreen({
+    required this.phone,
+    required this.verificationId,
+    super.key,
+  });
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -384,11 +473,14 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   final List<TextEditingController> _controllers =
       List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final List<FocusNode> _focusNodes =
+      List.generate(6, (_) => FocusNode());
   int _secondsLeft = 30;
   Timer? _timer;
+  bool _isVerifying = false;
 
-  bool get _canVerify => _controllers.every((c) => c.text.isNotEmpty);
+  bool get _canVerify =>
+      _controllers.every((c) => c.text.isNotEmpty) && !_isVerifying;
 
   @override
   void initState() {
@@ -422,6 +514,63 @@ class _OtpScreenState extends State<OtpScreen> {
     super.dispose();
   }
 
+  Future<void> _verifyOtp() async {
+    if (!_canVerify) return;
+    setState(() => _isVerifying = true);
+
+    final otp = _controllers.map((c) => c.text).join();
+    final credential = PhoneAuthProvider.credential(
+      verificationId: widget.verificationId,
+      smsCode: otp,
+    );
+
+    try {
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('patient_uid', user.uid);
+        await prefs.setString(
+            'patient_phone', user.phoneNumber ?? '');
+        await prefs.setInt(
+            'session_created_at',
+            DateTime.now().millisecondsSinceEpoch);
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        SmoothPageRoute(page: const MainLayout()),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+
+      String msg;
+      switch (e.code) {
+        case 'invalid-verification-code':
+          msg = 'Wrong OTP. Please try again.';
+          break;
+        case 'session-expired':
+          msg = 'OTP expired. Please request a new one.';
+          break;
+        default:
+          msg = e.message ?? 'Verification failed.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: const Color(0xFFFF3B30),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(50)),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -430,7 +579,8 @@ class _OtpScreenState extends State<OtpScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0A0F1E)),
+          icon: const Icon(Icons.arrow_back,
+              color: Color(0xFF0A0F1E)),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -457,7 +607,8 @@ class _OtpScreenState extends State<OtpScreen> {
             const SizedBox(height: 6),
             Text(
               'Sent to +91 ${widget.phone}',
-              style: const TextStyle(fontSize: 14, color: Color(0xFF6B7A99)),
+              style: const TextStyle(
+                  fontSize: 14, color: Color(0xFF6B7A99)),
             ),
             const SizedBox(height: 32),
 
@@ -540,26 +691,13 @@ class _OtpScreenState extends State<OtpScreen> {
             const SizedBox(height: 24),
 
             // Verify button
-              Opacity(
+            Opacity(
               opacity: _canVerify ? 1.0 : 0.5,
               child: SizedBox(
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: _canVerify
-                      ? () async {
-                          // Dummy token for demo
-                          await context
-                              .read<AuthViewModel>()
-                              .signInWithOtpToken('demo_token_123');
-                          if (!context.mounted) return;
-                          Navigator.of(context).pushReplacement(
-                            SmoothPageRoute(
-                              page: const MainLayout(),
-                            ),
-                          );
-                        }
-                      : null,
+                  onPressed: _canVerify ? _verifyOtp : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A6FE8),
                     elevation: 0,
@@ -567,14 +705,23 @@ class _OtpScreenState extends State<OtpScreen> {
                       borderRadius: BorderRadius.circular(100),
                     ),
                   ),
-                  child: const Text(
-                    'Verify & Continue',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: _isVerifying
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Verify & Continue',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
             ),

@@ -2,12 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/booking_args.dart';
 import 'trip_completed_screen.dart';
 
 class AmbulanceArrivedScreen extends StatefulWidget {
-  final BookingArgs args;
-  const AmbulanceArrivedScreen({super.key, required this.args});
+  final String ambulanceType;
+  final String pickupAddress;
+  final String dropAddress;
+  final double estimatedFare;
+  final String paymentMethod;
+
+  const AmbulanceArrivedScreen({
+    super.key,
+    required this.ambulanceType,
+    required this.pickupAddress,
+    required this.dropAddress,
+    this.estimatedFare = 350.0,
+    this.paymentMethod = 'cash',
+  });
 
   @override
   State<AmbulanceArrivedScreen> createState() => _AmbulanceArrivedScreenState();
@@ -42,7 +53,15 @@ class _AmbulanceArrivedScreenState extends State<AmbulanceArrivedScreen> {
 
   void _goToPayment() {
     Navigator.of(context, rootNavigator: true).pushReplacement(
-      MaterialPageRoute(builder: (_) => TripCompletedScreen(args: widget.args)),
+      MaterialPageRoute(builder: (_) => TripCompletedScreen(
+        tripId: '',
+        driverName: 'Rajesh Kumar',
+        ambulanceType: widget.ambulanceType,
+        pickupAddress: widget.pickupAddress,
+        dropAddress: widget.dropAddress,
+        totalFare: widget.estimatedFare,
+        paymentMethod: widget.paymentMethod,
+      )),
     );
   }
 
@@ -229,9 +248,9 @@ class _AmbulanceArrivedScreenState extends State<AmbulanceArrivedScreen> {
   Widget _buildDriverCard() {
     String typeLabel = 'BLS';
     Color badgeColor = const Color(0xFF1A6FE8);
-    if (widget.args.ambulanceType == 'ALS') { typeLabel = 'ALS'; badgeColor = const Color(0xFF003366); }
-    else if (widget.args.ambulanceType == 'Bike') { typeLabel = 'Ambu Bike'; badgeColor = const Color(0xFF10B981); }
-    else if (widget.args.ambulanceType == 'LastRide') { typeLabel = 'Last Ride'; badgeColor = const Color(0xFF6B7280); }
+    if (widget.ambulanceType == 'ALS') { typeLabel = 'ALS'; badgeColor = const Color(0xFF003366); }
+    else if (widget.ambulanceType == 'Bike') { typeLabel = 'Ambu Bike'; badgeColor = const Color(0xFF10B981); }
+    else if (widget.ambulanceType == 'LastRide') { typeLabel = 'Last Ride'; badgeColor = const Color(0xFF6B7280); }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -266,7 +285,7 @@ class _AmbulanceArrivedScreenState extends State<AmbulanceArrivedScreen> {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text('TG 09 AB 1234 · ${widget.args.ambulanceType == 'Bike' ? 'Honda Activa' : 'Mahindra Bolero'}',
+                    Text('TG 09 AB 1234 · ${widget.ambulanceType == 'Bike' ? 'Honda Activa' : 'Mahindra Bolero'}',
                         style: const TextStyle(color: Color(0xFF6B7A99), fontSize: 11)),
                   ],
                 ),

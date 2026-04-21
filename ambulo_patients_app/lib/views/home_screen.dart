@@ -8,7 +8,6 @@ import '../core/transitions.dart';
 import '../models/booking_args.dart';
 import '../viewmodels/booking_provider.dart';
 import '../viewmodels/user_provider.dart';
-import 'ambulance_assigned_screen.dart';
 import 'main_layout.dart';
 import 'ambulance_selection_screen.dart';
 import 'location_selection_screen.dart';
@@ -140,16 +139,13 @@ class HomeScreen extends StatelessWidget {
                   if (booking == null) return const SizedBox.shrink();
                   return GestureDetector(
                     onTap: () {
-                      final user = context.read<UserProvider>();
-                      Navigator.of(context, rootNavigator: true).push(
-                        SmoothPageRoute(
-                          page: AmbulanceAssignedScreen(
-                            args: BookingArgs(
-                              ambulanceType: booking['ambulanceType'] as String,
-                              pickup: user.address,
-                              destination: booking['destination'] ?? 'Hospital',
-                            ),
-                          ),
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Your ambulance is on the way!',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          backgroundColor: Color(0xFF1A6FE8),
+                          behavior: SnackBarBehavior.floating,
+                          duration: Duration(seconds: 2),
                         ),
                       );
                     },

@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/firestore_service.dart';
-import '../core/transitions.dart';
+
 import '../core/theme.dart';
 import '../models/booking_args.dart';
 import 'main_layout.dart';
-import 'ambulance_arriving_screen.dart';
-import 'ambulance_moving_screen.dart';
-import 'trip_completed_patient_screen.dart';
+import 'ambulance_assigned_screen.dart';
+import 'live_tracking_screen.dart';
+import 'trip_completed_screen.dart';
 
 class SearchingScreen extends StatefulWidget {
   final BookingArgs args;
@@ -71,7 +72,7 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
             PageRouteBuilder(
               transitionDuration: const Duration(milliseconds: 400),
               pageBuilder: (context, animation, _) =>
-                  AmbulanceArrivingScreen(
+                  AmbulanceAssignedScreen(
                 tripId: _currentTripId!,
                 driverName: data['driver_name'] as String? ??
                     driverData['name'] as String? ?? 'Driver',
@@ -79,7 +80,6 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
                     driverData['phone'] as String? ?? '',
                 vehicleNumber: data['vehicle_number'] as String? ??
                     driverData['vehicle_number'] as String? ?? '',
-                driverPhoto: driverData['photo_url'] as String? ?? '',
                 ambulanceType: widget.args.ambulanceType,
                 pickupAddress: widget.args.pickup,
                 dropAddress: widget.args.destination,
@@ -106,9 +106,13 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
           if (!mounted) return;
           Navigator.of(context, rootNavigator: true).pushReplacement(
             MaterialPageRoute(
-              builder: (context) => AmbulanceMovingScreen(
+              builder: (context) => LiveTrackingScreen(
                 tripId: _currentTripId!,
                 driverName: data['driver_name'] as String? ?? 'Driver',
+                driverPhone: data['driver_phone'] as String? ?? '',
+                vehicleNumber: data['vehicle_number'] as String? ?? '',
+                ambulanceType:
+                    data['ambulance_type'] as String? ?? widget.args.ambulanceType,
                 dropAddress:
                     (data['destination'] as Map<String, dynamic>?)?['address']
                             as String? ??
@@ -125,7 +129,7 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
           if (!mounted) return;
           Navigator.of(context, rootNavigator: true).pushReplacement(
             MaterialPageRoute(
-              builder: (context) => TripCompletedPatientScreen(
+              builder: (context) => TripCompletedScreen(
                 tripId: _currentTripId!,
                 driverName: data['driver_name'] as String? ?? 'Driver',
                 ambulanceType:
@@ -181,19 +185,17 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Map Background
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: MediaQuery.of(context).size.height * 0.45,
-            child: Container(
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: NetworkImage('https://static-maps.yandex.ru/1.x/?lang=en_US&ll=78.3813,17.4398&z=13&l=map&size=600,450'),
-                  fit: BoxFit.cover,
-                ),
+          // 1. Google Map Background
+          Positioned.fill(
+            child: GoogleMap(
+              initialCameraPosition: const CameraPosition(
+                target: LatLng(17.3850, 78.4867),
+                zoom: 13,
               ),
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
             ),
           ),
           
@@ -260,11 +262,12 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, -5))],
               ),
-              child: Column(
-                children: [
-                   // Handle
-                   Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2))),
-                   const SizedBox(height: 32),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                     // Handle
+                     Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2))),
+                     const SizedBox(height: 32),
                    
                    // Blue Icon Circle
                    Container(
@@ -365,6 +368,7 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
               ),
             ),
           ),
+        ),
         ],
       ),
     );
