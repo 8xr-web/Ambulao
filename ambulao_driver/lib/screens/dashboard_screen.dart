@@ -24,6 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _onlineStartTime;
   String _currentDriverId = '';
   String _driverAmbulanceType = 'BLS';
+  final Set<String> _seenTripIds = {}; // prevents ghost/duplicate requests
 
   @override
   void initState() {
@@ -102,21 +103,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (change.type == DocumentChangeType.added) {
           final tripData = change.doc.data() as Map<String, dynamic>;
           final tripId = change.doc.id;
-          
+
+          // 0. Skip trips already shown in this session
+          if (_seenTripIds.contains(tripId)) continue;
+
           // 1. Client-side filtering: Ignore trips created before we went online
           final createdAt = tripData['created_at'] as Timestamp?;
           if (createdAt != null && _onlineStartTime != null) {
             if (createdAt.toDate().isBefore(_onlineStartTime!)) continue;
           }
 
-          // 2. Skip if already declined by this driver
+          // 2. Only show trips that are actively searching with no driver
+          if (tripData['status'] != 'searching') continue;
+
+          // 3. Skip if already declined by this driver
           final declinedBy =
               List<String>.from(tripData['declined_by'] as List? ?? []);
           if (declinedBy.contains(_currentDriverId)) continue;
 
-          // 3. Skip if already has a driver assigned
+          // 4. Skip if already has a driver assigned
           if (tripData['driver_id'] != null) continue;
 
+          _seenTripIds.add(tripId);
           debugPrint('LIVE Trip received: $tripId');
           _showIncomingRequest(tripId, tripData);
           break; // show one request at a time
@@ -131,6 +139,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _tripSubscription?.cancel();
     _tripSubscription = null;
     _onlineStartTime = null;
+    _seenTripIds.clear(); // reset seen trips for next session
     _timer?.cancel();
 
     final prefs = await SharedPreferences.getInstance();

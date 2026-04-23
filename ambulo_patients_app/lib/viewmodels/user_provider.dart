@@ -6,7 +6,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 class UserProvider extends ChangeNotifier {
-  String name = 'Arjun Kumar';
+  String name = '';
   String phone = '9876543210';
   String email = '';
   String dob = '';
@@ -31,7 +31,7 @@ class UserProvider extends ChangeNotifier {
 
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
-    name = prefs.getString('user_name') ?? 'Arjun Kumar';
+    name = prefs.getString('user_name') ?? prefs.getString('patient_name') ?? '';
     phone = prefs.getString('user_phone') ?? '9876543210';
     email = prefs.getString('user_email') ?? '';
     dob = prefs.getString('user_dob') ?? '';
@@ -122,8 +122,10 @@ class UserProvider extends ChangeNotifier {
       }
 
       Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-        // timeLimit: const Duration(seconds: 10), // Removed for reliability in testing
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
       latitude = position.latitude;

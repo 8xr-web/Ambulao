@@ -37,11 +37,14 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
   }
 
   Future<void> _initiateRealTrip() async {
+    // Use real GPS coordinates from BookingArgs if available
+    final pickupLat = widget.args.lat ?? 17.4399;
+    final pickupLng = widget.args.lng ?? 78.3813;
+
     try {
       _currentTripId = await FirestoreService.createTripRequest(
         ambulanceType: widget.args.ambulanceType,
-        // Mocked GPS coordinates for the prototype
-        pickup: {'address': widget.args.pickup, 'lat': 17.4399, 'lng': 78.3813},
+        pickup: {'address': widget.args.pickup, 'lat': pickupLat, 'lng': pickupLng},
         destination: {'address': widget.args.destination, 'lat': 17.4500, 'lng': 78.3900},
         paymentMethod: 'Cash',
       );
@@ -191,14 +194,25 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
           // 1. Google Map Background
           Positioned.fill(
             child: GoogleMap(
-              initialCameraPosition: const CameraPosition(
-                target: LatLng(17.3850, 78.4867),
-                zoom: 13,
+              initialCameraPosition: CameraPosition(
+                // Use real pickup coordinates or fall back to Hyderabad city center
+                target: LatLng(widget.args.lat ?? 17.3850, widget.args.lng ?? 78.4867),
+                zoom: 15,
               ),
               zoomControlsEnabled: false,
               myLocationButtonEnabled: false,
               mapToolbarEnabled: false,
               compassEnabled: false,
+              // All gestures are enabled by default
+              markers: {
+                if (widget.args.lat != null && widget.args.lng != null)
+                  Marker(
+                    markerId: const MarkerId('pickup'),
+                    position: LatLng(widget.args.lat!, widget.args.lng!),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                    infoWindow: InfoWindow(title: 'Your Pickup', snippet: widget.args.pickup),
+                  ),
+              },
             ),
           ),
           

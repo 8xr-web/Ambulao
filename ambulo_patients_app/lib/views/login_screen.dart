@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -472,9 +473,9 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   final List<TextEditingController> _controllers =
-      List.generate(6, (_) => TextEditingController());
+      List.generate(4, (_) => TextEditingController());
   final List<FocusNode> _focusNodes =
-      List.generate(6, (_) => FocusNode());
+      List.generate(4, (_) => FocusNode());
   int _secondsLeft = 30;
   Timer? _timer;
   bool _isVerifying = false;
@@ -532,11 +533,18 @@ class _OtpScreenState extends State<OtpScreen> {
       if (user != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('patient_uid', user.uid);
-        await prefs.setString(
-            'patient_phone', user.phoneNumber ?? '');
-        await prefs.setInt(
-            'session_created_at',
-            DateTime.now().millisecondsSinceEpoch);
+        await prefs.setString('patient_phone', user.phoneNumber ?? '');
+        await prefs.setInt('session_created_at', DateTime.now().millisecondsSinceEpoch);
+
+        // ── Check if this is a new user ───────────────────────────────────
+        final isNewUser = userCredential.additionalUserInfo?.isNewUser ?? false;
+        final savedName = prefs.getString('patient_name') ?? '';
+
+        if (!mounted) return;
+
+        if (isNewUser || savedName.isEmpty) {
+          await _showNameSheet(user.uid, prefs);
+        }
       }
 
       if (!mounted) return;
@@ -569,6 +577,95 @@ class _OtpScreenState extends State<OtpScreen> {
         ),
       );
     }
+  }
+
+  /// Shows a bottom sheet asking the user their name (first time only).
+  Future<void> _showNameSheet(String uid, SharedPreferences prefs) async {
+    final nameCtrl = TextEditingController();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'What is your name?',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0A0F1E)),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                "We'll use this to personalise your experience.",
+                style: TextStyle(fontSize: 14, color: Color(0xFF6B7A99)),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  hintText: 'Enter your name',
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFF),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF1A6FE8), width: 1.5),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF1A6FE8), width: 2),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 20),
+              StatefulBuilder(
+                builder: (ctx, setSt) => SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final name = nameCtrl.text.trim();
+                      if (name.isEmpty) return;
+                      // Save locally
+                      await prefs.setString('patient_name', name);
+                      await prefs.setString('user_name', name);
+                      // Save to Firestore
+                      try {
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(uid)
+                            .set({'name': name, 'phone': prefs.getString('patient_phone') ?? ''}, SetOptions(merge: true));
+                      } catch (_) {}
+                      if (!ctx.mounted) return;
+                      Navigator.of(ctx).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1A6FE8),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+                    ),
+                    child: const Text('Save & Continue', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    nameCtrl.dispose();
   }
 
   @override
@@ -612,14 +709,15 @@ class _OtpScreenState extends State<OtpScreen> {
             ),
             const SizedBox(height: 32),
 
-            // 6 OTP boxes
+            // 4 OTP boxes — patient app uses 4-digit internal testing OTP
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(
-                6,
-                (i) => SizedBox(
-                  width: 46,
-                  height: 54,
+                4,
+                (i) => Container(
+                  width: 56,
+                  height: 64,
+                  margin: EdgeInsets.only(right: i < 3 ? 12 : 0),
                   child: TextField(
                     controller: _controllers[i],
                     focusNode: _focusNodes[i],
@@ -631,7 +729,7 @@ class _OtpScreenState extends State<OtpScreen> {
                     textAlign: TextAlign.center,
                     textAlignVertical: TextAlignVertical.center,
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 24,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF1A6FE8),
                     ),
@@ -643,7 +741,12 @@ class _OtpScreenState extends State<OtpScreen> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(
-                            color: Color(0xFF1A6FE8), width: 1.5),
+                            color: Color(0xFFDDE3EF), width: 1.5),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: Color(0xFFDDE3EF), width: 1.5),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -652,7 +755,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       ),
                     ),
                     onChanged: (val) {
-                      if (val.isNotEmpty && i < 5) {
+                      if (val.isNotEmpty && i < 3) {
                         _focusNodes[i + 1].requestFocus();
                       }
                       if (val.isEmpty && i > 0) {

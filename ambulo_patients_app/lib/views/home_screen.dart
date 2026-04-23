@@ -29,6 +29,8 @@ class HomeScreen extends StatelessWidget {
             ambulanceType: ambulanceType,
             pickup: user.address,
             destination: destination,
+            lat: user.latitude,
+            lng: user.longitude,
           ),
         ),
       ),
@@ -102,7 +104,7 @@ class HomeScreen extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Text("Good morning", style: TextStyle(color: Color(0xFF6E6E73), fontSize: 13)),
-                              Text("${user.name.split(' ').first} 👋", style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+                              Text("${user.name.isNotEmpty ? user.name.split(' ').first : 'there'} 👋", style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
                             ],
                           ),
                         ],
@@ -250,7 +252,15 @@ class HomeScreen extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              const Icon(Icons.navigation_outlined, color: AppColors.primaryBlue, size: 20),
+                              Consumer<UserProvider>(
+                                builder: (ctx, user, _) => GestureDetector(
+                                  onTap: () => ctx.read<UserProvider>().fetchCurrentLocation(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4),
+                                    child: Icon(Icons.refresh_rounded, color: AppColors.primaryBlue, size: 20),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),

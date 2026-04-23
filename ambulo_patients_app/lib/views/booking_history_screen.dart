@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme.dart';
 import '../core/transitions.dart';
 import '../viewmodels/booking_provider.dart';
@@ -7,8 +9,50 @@ import 'location_selection_screen.dart';
 import 'main_layout.dart';
 import 'nurse_assigned_screen.dart';
 
-class BookingHistoryScreen extends StatelessWidget {
+class BookingHistoryScreen extends StatefulWidget {
   const BookingHistoryScreen({super.key});
+
+  @override
+  State<BookingHistoryScreen> createState() => _BookingHistoryScreenState();
+}
+
+class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _trips = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrips();
+  }
+
+  Future<void> _loadTrips() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('patient_uid') ?? '';
+      if (uid.isEmpty) {
+        setState(() { _isLoading = false; _trips = []; });
+        return;
+      }
+
+      final snap = await FirebaseFirestore.instance
+          .collection('trips')
+          .where('patient_id', isEqualTo: uid)
+          .where('status', isEqualTo: 'completed')
+          .orderBy('created_at', descending: true)
+          .limit(20)
+          .get();
+
+      setState(() {
+        _trips = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('BookingHistoryScreen: Firestore error — $e');
+      setState(() { _isLoading = false; _trips = []; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,8 +73,8 @@ class BookingHistoryScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list, color: AppColors.textPrimary),
-            onPressed: () {},
+            icon: const Icon(Icons.refresh, color: AppColors.textPrimary),
+            onPressed: _loadTrips,
           ),
         ],
       ),
@@ -62,7 +106,7 @@ class BookingHistoryScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // ── UPCOMING section ──
+                // ── UPCOMING nurse bookings ──
                 if (upcoming.isNotEmpty) ...[
                   const Text(
                     'UPCOMING',
@@ -81,7 +125,7 @@ class BookingHistoryScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                 ],
 
-                // ── RECENT section ──
+                // ── RECENT ambulance trips from Firestore ──
                 const Text(
                   'RECENT',
                   style: TextStyle(
@@ -92,35 +136,31 @@ class BookingHistoryScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildRideCard(
-                  context,
-                  'ALS Ambulance',
-                  Icons.favorite_border,
-                  'Today · 10:15 AM',
-                  '₹999',
-                  'Your Location',
-                  'Apollo Hospital, Jubilee Hills',
-                ),
-                const SizedBox(height: 12),
-                _buildRideCard(
-                  context,
-                  'BLS Ambulance',
-                  Icons.medical_services_outlined,
-                  'Mar 15 · 9:30 AM',
-                  '₹499',
-                  'Banjara Hills',
-                  'KIMS Hospital',
-                ),
-                const SizedBox(height: 12),
-                _buildRideCard(
-                  context,
-                  'Ambu Bike',
-                  Icons.pedal_bike,
-                  'Mar 10 · 8:40 AM',
-                  '₹199',
-                  'Hitec City',
-                  'Yashoda Hospital',
-                ),
+
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: CircularProgressIndicator(color: AppColors.primaryBlue),
+                    ),
+                  )
+                else if (_trips.isEmpty)
+                  _buildEmptyState()
+                else
+                  ..._trips.map((trip) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildRideCard(
+                      context,
+                      _ambulanceLabel(trip['ambulance_type'] ?? 'BLS'),
+                      _ambulanceIcon(trip['ambulance_type'] ?? 'BLS'),
+                      _formatDate(trip['created_at']),
+                      '₹${(trip['estimated_fare'] ?? 0).toStringAsFixed(0)}',
+                      trip['pickup']?['address'] ?? 'Pickup',
+                      trip['destination']?['address'] ?? 'Destination',
+                      rebookType: trip['ambulance_type'] ?? 'BLS',
+                      rebookDrop: trip['destination']?['address'] ?? '',
+                    ),
+                  )),
               ],
             ),
           );
@@ -128,6 +168,77 @@ class BookingHistoryScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 64),
+        child: Column(
+          children: [
+            Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEF4FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.local_hospital_outlined, color: AppColors.primaryBlue, size: 40),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'No trips yet',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Your completed trips will appear here.',
+              style: TextStyle(fontSize: 14, color: Color(0xFF6E6E73)),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _ambulanceLabel(String type) {
+    switch (type) {
+      case 'ALS': return 'ALS Ambulance';
+      case 'Bike': return 'Ambu Bike';
+      case 'LastRide': return 'Last Ride';
+      default: return 'BLS Ambulance';
+    }
+  }
+
+  IconData _ambulanceIcon(String type) {
+    switch (type) {
+      case 'ALS': return Icons.favorite_border;
+      case 'Bike': return Icons.pedal_bike;
+      case 'LastRide': return Icons.airport_shuttle_outlined;
+      default: return Icons.medical_services_outlined;
+    }
+  }
+
+  String _formatDate(dynamic ts) {
+    if (ts == null) return 'Unknown date';
+    if (ts is Timestamp) {
+      final dt = ts.toDate();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inDays == 0) return 'Today · ${_timeStr(dt)}';
+      if (diff.inDays == 1) return 'Yesterday · ${_timeStr(dt)}';
+      return '${dt.day} ${_monthName(dt.month)} · ${_timeStr(dt)}';
+    }
+    return ts.toString();
+  }
+
+  String _timeStr(DateTime dt) {
+    final h = dt.hour > 12 ? dt.hour - 12 : dt.hour == 0 ? 12 : dt.hour;
+    final m = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$h:$m $ampm';
+  }
+
+  String _monthName(int m) => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
 
   Widget _buildNurseBookingCard(
     BuildContext context,
@@ -310,8 +421,10 @@ class BookingHistoryScreen extends StatelessWidget {
     String date,
     String price,
     String pickup,
-    String dropoff,
-  ) {
+    String dropoff, {
+    String rebookType = 'BLS',
+    String rebookDrop = '',
+  }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -462,9 +575,9 @@ class BookingHistoryScreen extends StatelessWidget {
                     MainLayout.homeNavKey.currentState?.push(
                       SmoothPageRoute(
                         page: LocationSelectionScreen(
-                          ambulanceType: title.contains('ALS') ? 'ALS' : title.contains('Bike') ? 'Bike' : 'BLS',
+                          ambulanceType: rebookType,
                           initialTab: LocTab.pickup,
-                          prefilledDrop: dropoff,
+                          prefilledDrop: rebookDrop.isNotEmpty ? rebookDrop : dropoff,
                         ),
                       ),
                     );

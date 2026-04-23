@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ambulao_driver/core/theme.dart';
-import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/pin_screen.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class ActiveNavigationScreen extends StatefulWidget {
   final String tripId;
@@ -36,6 +36,20 @@ class ActiveNavigationScreen extends StatefulWidget {
 }
 
 class _ActiveNavigationScreenState extends State<ActiveNavigationScreen> {
+  GoogleMapController? _mapController;
+
+  Set<Marker> get _markers => {
+    Marker(
+      markerId: const MarkerId('pickup'),
+      position: LatLng(widget.pickupLat, widget.pickupLng),
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      infoWindow: InfoWindow(
+        title: 'Pickup — ${widget.patientName}',
+        snippet: widget.pickupAddress,
+      ),
+    ),
+  };
+
   Future<void> _launchUrl(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri)) {
@@ -44,14 +58,38 @@ class _ActiveNavigationScreenState extends State<ActiveNavigationScreen> {
   }
 
   @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: MapBackgroundMock(
-        child: SafeArea(
-          bottom: false,
-          child: Stack(
-            children: [
+      body: Stack(
+        children: [
+          // ── Full-screen GoogleMap ─────────────────────────────────────────
+          Positioned.fill(
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: LatLng(widget.pickupLat, widget.pickupLng),
+                zoom: 15,
+              ),
+              onMapCreated: (c) => _mapController = c,
+              markers: _markers,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              // All gesture defaults are true — do not disable
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
               // Top pickup address card
               Positioned(
                 top: 16,
@@ -307,16 +345,17 @@ class _ActiveNavigationScreenState extends State<ActiveNavigationScreen> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+                      ],           // inner Column.children
+                    ),             // inner Column
+                  ),               // Container (bottom card)
+                ],                 // outer Column.children
+              ),                   // outer Column
+            ],                     // inner Stack.children
+          ),                       // inner Stack
+        ),                         // SafeArea
+      ],                           // outer Stack.children
+    ),                             // outer Stack (Scaffold body)
+  );
   }
 
   void _showCallSheet(BuildContext context, String name, String phone) {
