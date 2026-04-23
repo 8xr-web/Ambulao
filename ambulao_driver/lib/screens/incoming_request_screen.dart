@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ambulao_driver/screens/active_navigation_screen.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/core/theme.dart';
+import 'package:ambulao_driver/services/location_service.dart';
 
 class IncomingRequestScreen extends StatefulWidget {
   final String tripId;
@@ -113,6 +114,9 @@ class _IncomingRequestScreenState extends State<IncomingRequestScreen>
           'status': 'on_trip',
           'updated_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+
+        // ── Start sending GPS location to Firestore every 5 s ──────────────
+        LocationService.instance.startTracking(driverId);
       }
 
       if (!mounted) return;

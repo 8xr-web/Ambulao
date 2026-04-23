@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import '../core/theme.dart';
 
 class DestinationSelectionScreen extends StatefulWidget {
@@ -15,20 +15,19 @@ class DestinationSelectionScreen extends StatefulWidget {
 
 class _DestinationSelectionScreenState
     extends State<DestinationSelectionScreen> {
-  late final MapController _mapController;
+  GoogleMapController? _mapController;
   LatLng? _selectedDestination;
-  final LatLng _defaultLocation = const LatLng(17.3850, 78.4867);
+  static const LatLng _defaultLocation = LatLng(17.3850, 78.4867);
 
   @override
   void initState() {
     super.initState();
-    _mapController = MapController();
     _selectedDestination = widget.initialLocation;
   }
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -40,6 +39,8 @@ class _DestinationSelectionScreenState
 
   @override
   Widget build(BuildContext context) {
+    final initialTarget = widget.initialLocation ?? _defaultLocation;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -84,90 +85,37 @@ class _DestinationSelectionScreenState
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      body: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          initialCenter: widget.initialLocation ?? _defaultLocation,
-          initialZoom: 14.0,
-          onTap: (tapPosition, point) {
-            setState(() {
-              _selectedDestination = point;
-            });
-          },
+      body: GoogleMap(
+        initialCameraPosition: CameraPosition(
+          target: initialTarget,
+          zoom: 14.0,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.flutter_hello_world',
-          ),
+        myLocationEnabled: true,
+        myLocationButtonEnabled: true,
+        zoomControlsEnabled: false,
+        mapToolbarEnabled: false,
+        onMapCreated: (controller) => _mapController = controller,
+        onTap: (point) {
+          setState(() {
+            _selectedDestination = point;
+          });
+        },
+        markers: {
           if (widget.initialLocation != null)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: widget.initialLocation!,
-                  width: 150,
-                  height: 80,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text(
-                          "Starting location",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color:
-                              Colors.blue.withValues(alpha: 0.2), // Blue for pickup
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 16,
-                            height: 16,
-                            decoration: const BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            Marker(
+              markerId: const MarkerId('pickup'),
+              position: widget.initialLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              infoWindow: const InfoWindow(title: 'Starting location'),
             ),
-          if (_selectedDestination != null &&
-              _selectedDestination != widget.initialLocation)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _selectedDestination!,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: AppColors.primaryBlue,
-                    size: 40,
-                  ),
-                ),
-              ],
+          if (_selectedDestination != null)
+            Marker(
+              markerId: const MarkerId('destination'),
+              position: _selectedDestination!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+              infoWindow: const InfoWindow(title: 'Destination'),
             ),
-        ],
+        },
       ),
     );
   }

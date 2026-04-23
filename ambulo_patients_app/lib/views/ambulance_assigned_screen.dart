@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' show pi;
 import '../core/transitions.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -13,6 +13,7 @@ import 'live_tracking_screen.dart';
 
 class AmbulanceAssignedScreen extends StatefulWidget {
   final String tripId;
+  final String driverId;
   final String driverName;
   final String driverPhone;
   final String vehicleNumber;
@@ -20,10 +21,13 @@ class AmbulanceAssignedScreen extends StatefulWidget {
   final String pickupAddress;
   final String dropAddress;
   final double estimatedFare;
+  final double pickupLat;
+  final double pickupLng;
 
   const AmbulanceAssignedScreen({
     super.key,
     required this.tripId,
+    required this.driverId,
     required this.driverName,
     required this.driverPhone,
     required this.vehicleNumber,
@@ -31,6 +35,8 @@ class AmbulanceAssignedScreen extends StatefulWidget {
     required this.pickupAddress,
     required this.dropAddress,
     required this.estimatedFare,
+    this.pickupLat = 17.4399,
+    this.pickupLng = 78.3813,
   });
 
   @override
@@ -41,10 +47,13 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _moveController;
   StreamSubscription<DocumentSnapshot>? _tripSubscription;
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
 
-  Offset _startPos = Offset.zero;
-  Offset _endPos = Offset.zero;
-  bool _initialized = false;
+  GoogleMapController? _mapController;
+  LatLng? _driverLatLng;
+  late LatLng _pickupLatLng;
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
 
   @override
   void initState() {
@@ -52,7 +61,58 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
     _moveController = AnimationController(
         vsync: this, duration: const Duration(minutes: 1))
       ..repeat();
+    _pickupLatLng = LatLng(widget.pickupLat, widget.pickupLng);
     _listenForTripUpdates();
+    if (widget.driverId.isNotEmpty) _listenForDriverLocation();
+  }
+
+  void _listenForDriverLocation() {
+    _locationSubscription = FirebaseFirestore.instance
+        .collection('drivers')
+        .doc(widget.driverId)
+        .collection('location')
+        .doc('current')
+        .snapshots()
+        .listen((snap) {
+      if (!snap.exists || !mounted) return;
+      final d = snap.data()!;
+      final lat = (d['lat'] as num?)?.toDouble();
+      final lng = (d['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) return;
+
+      final newPos = LatLng(lat, lng);
+      setState(() {
+        _driverLatLng = newPos;
+        _markers = {
+          Marker(
+            markerId: const MarkerId('driver'),
+            position: newPos,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            infoWindow: InfoWindow(title: widget.driverName, snippet: 'En route'),
+          ),
+          Marker(
+            markerId: const MarkerId('pickup'),
+            position: _pickupLatLng,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: InfoWindow(title: 'Your pickup', snippet: widget.pickupAddress),
+          ),
+        };
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: [newPos, _pickupLatLng],
+            color: const Color(0xFF1A6FE8),
+            width: 4,
+            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+          ),
+        };
+      });
+
+      // Smooth camera follow
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(newPos),
+      );
+    }, onError: (e) => debugPrint('Driver location error: $e'));
   }
 
   void _listenForTripUpdates() {
@@ -74,12 +134,15 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
             transitionDuration: const Duration(milliseconds: 400),
             pageBuilder: (context, animation, _) => LiveTrackingScreen(
               tripId: widget.tripId,
+              driverId: widget.driverId,
               driverName: widget.driverName,
               driverPhone: widget.driverPhone,
               vehicleNumber: widget.vehicleNumber,
               ambulanceType: widget.ambulanceType,
               dropAddress: widget.dropAddress,
               estimatedFare: widget.estimatedFare,
+              pickupLat: widget.pickupLat,
+              pickupLng: widget.pickupLng,
             ),
             transitionsBuilder: (context, animation, _, child) =>
                 SlideTransition(
@@ -114,21 +177,13 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_initialized) {
-      final size = MediaQuery.of(context).size;
-      _startPos = Offset(size.width * 0.15, size.height * 0.15);
-      _endPos = Offset(size.width * 0.5, size.height * 0.35);
-      _initialized = true;
-    }
-  }
 
   @override
   void dispose() {
     _moveController.dispose();
     _tripSubscription?.cancel();
+    _locationSubscription?.cancel();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -157,25 +212,38 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
 
   @override
   Widget build(BuildContext context) {
-    final double angle =
-        atan2(_endPos.dy - _startPos.dy, _endPos.dx - _startPos.dx);
-
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       body: Stack(
         children: [
-          // 1. Google Map Background
+          // 1. Google Map with live driver marker
           Positioned.fill(
-             child: GoogleMap(
-               initialCameraPosition: const CameraPosition(
-                 target: LatLng(17.3850, 78.4867),
-                 zoom: 13,
-               ),
-               zoomControlsEnabled: false,
-               myLocationButtonEnabled: false,
-               mapToolbarEnabled: false,
-               compassEnabled: false,
-             ),
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _driverLatLng ?? _pickupLatLng,
+                zoom: 14,
+              ),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                // Set initial pickup marker right away
+                setState(() {
+                  _markers = {
+                    Marker(
+                      markerId: const MarkerId('pickup'),
+                      position: _pickupLatLng,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                      infoWindow: InfoWindow(title: 'Your pickup', snippet: widget.pickupAddress),
+                    ),
+                  };
+                });
+              },
+              markers: _markers,
+              polylines: _polylines,
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+            ),
           ),
 
           // Back Button

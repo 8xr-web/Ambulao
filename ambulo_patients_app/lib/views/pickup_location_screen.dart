@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../widgets/location_search_bar.dart';
 import '../core/theme.dart';
@@ -13,19 +12,13 @@ class PickupLocationScreen extends StatefulWidget {
 }
 
 class _PickupLocationScreenState extends State<PickupLocationScreen> {
-  final LatLng _defaultLocation = const LatLng(17.3850, 78.4867);
+  static const LatLng _defaultLocation = LatLng(17.3850, 78.4867);
   LatLng? _currentLocation;
-  late final MapController _mapController;
-
-  @override
-  void initState() {
-    super.initState();
-    _mapController = MapController();
-  }
+  GoogleMapController? _mapController;
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -56,12 +49,8 @@ class _PickupLocationScreenState extends State<PickupLocationScreen> {
     try {
       final position = await Geolocator.getCurrentPosition();
       final newLatLng = LatLng(position.latitude, position.longitude);
-
-      setState(() {
-        _currentLocation = newLatLng;
-      });
-
-      _mapController.move(newLatLng, 15.0);
+      setState(() { _currentLocation = newLatLng; });
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newLatLng, 15.0));
     } catch (e) {
       if (mounted) _showSnack('Error getting location: $e');
     }
@@ -91,8 +80,7 @@ class _PickupLocationScreenState extends State<PickupLocationScreen> {
               padding: const EdgeInsets.all(8),
               decoration: const BoxDecoration(
                   color: Colors.black26, shape: BoxShape.circle),
-              child:
-                  const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+              child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
             ),
             onPressed: () => Navigator.of(context).pop(),
           );
@@ -117,41 +105,33 @@ class _PickupLocationScreenState extends State<PickupLocationScreen> {
               heroTag: "btn_confirm_pickup",
               onPressed: _confirmLocation,
               backgroundColor: AppColors.primaryBlue,
-              label:
-                  const Text("Confirm", style: TextStyle(color: Colors.white)),
+              label: const Text("Confirm", style: TextStyle(color: Colors.white)),
               icon: const Icon(Icons.check, color: Colors.white),
             ),
         ],
       ),
-      body: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          initialCenter: _defaultLocation,
-          initialZoom: 13.0,
-          onTap: (_, point) {
-            setState(() {
-              _currentLocation = point;
-            });
-          },
+      body: GoogleMap(
+        initialCameraPosition: const CameraPosition(
+          target: _defaultLocation,
+          zoom: 13.0,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.flutter_hello_world',
-          ),
+        myLocationEnabled: true,
+        myLocationButtonEnabled: false,
+        zoomControlsEnabled: false,
+        mapToolbarEnabled: false,
+        onMapCreated: (controller) => _mapController = controller,
+        onTap: (point) {
+          setState(() { _currentLocation = point; });
+        },
+        markers: {
           if (_currentLocation != null)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _currentLocation!,
-                  width: 80,
-                  height: 80,
-                  child: const Icon(Icons.location_on,
-                      size: 40, color: AppColors.primaryBlue),
-                ),
-              ],
+            Marker(
+              markerId: const MarkerId('pickup'),
+              position: _currentLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              infoWindow: const InfoWindow(title: 'Pickup Location'),
             ),
-        ],
+        },
       ),
     );
   }

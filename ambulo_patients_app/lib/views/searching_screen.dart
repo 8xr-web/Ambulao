@@ -74,6 +74,7 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
               pageBuilder: (context, animation, _) =>
                   AmbulanceAssignedScreen(
                 tripId: _currentTripId!,
+                driverId: driverId,
                 driverName: data['driver_name'] as String? ??
                     driverData['name'] as String? ?? 'Driver',
                 driverPhone: data['driver_phone'] as String? ??
@@ -85,6 +86,8 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
                 dropAddress: widget.args.destination,
                 estimatedFare:
                     ((data['estimated_fare'] ?? 350.0) as num).toDouble(),
+                pickupLat: (data['pickup']?['lat'] as num?)?.toDouble() ?? 17.4399,
+                pickupLng: (data['pickup']?['lng'] as num?)?.toDouble() ?? 78.3813,
               ),
               transitionsBuilder: (context, animation, _, child) =>
                   SlideTransition(

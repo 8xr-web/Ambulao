@@ -12,22 +12,28 @@ import 'profile_screen.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final String tripId;
+  final String driverId;
   final String driverName;
   final String driverPhone;
   final String vehicleNumber;
   final String ambulanceType;
   final String dropAddress;
   final double estimatedFare;
+  final double pickupLat;
+  final double pickupLng;
 
   const LiveTrackingScreen({
     super.key,
     required this.tripId,
+    this.driverId = '',
     required this.driverName,
     required this.driverPhone,
     required this.vehicleNumber,
     required this.ambulanceType,
     required this.dropAddress,
     required this.estimatedFare,
+    this.pickupLat = 17.4399,
+    this.pickupLng = 78.3813,
   });
 
   @override
@@ -36,11 +42,66 @@ class LiveTrackingScreen extends StatefulWidget {
 
 class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   StreamSubscription<DocumentSnapshot>? _tripSubscription;
+  StreamSubscription<DocumentSnapshot>? _locationSubscription;
+
+  GoogleMapController? _mapController;
+  LatLng? _driverLatLng;
+  late LatLng _pickupLatLng;
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
 
   @override
   void initState() {
     super.initState();
+    _pickupLatLng = LatLng(widget.pickupLat, widget.pickupLng);
     _listenForCompletion();
+    if (widget.driverId.isNotEmpty) _listenForDriverLocation();
+  }
+
+  void _listenForDriverLocation() {
+    _locationSubscription = FirebaseFirestore.instance
+        .collection('drivers')
+        .doc(widget.driverId)
+        .collection('location')
+        .doc('current')
+        .snapshots()
+        .listen((snap) {
+      if (!snap.exists || !mounted) return;
+      final d = snap.data()!;
+      final lat = (d['lat'] as num?)?.toDouble();
+      final lng = (d['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) return;
+
+      final newPos = LatLng(lat, lng);
+      setState(() {
+        _driverLatLng = newPos;
+        _markers = {
+          Marker(
+            markerId: const MarkerId('driver'),
+            position: newPos,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            infoWindow: InfoWindow(title: widget.driverName, snippet: 'En route to hospital'),
+          ),
+          Marker(
+            markerId: const MarkerId('pickup'),
+            position: _pickupLatLng,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: const InfoWindow(title: 'Patient pickup'),
+          ),
+        };
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: [newPos, _pickupLatLng],
+            color: const Color(0xFF1A6FE8),
+            width: 4,
+            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+          ),
+        };
+      });
+
+      _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
+    }, onError: (e) => debugPrint('LiveTracking location error: $e'));
   }
 
   void _listenForCompletion() {
@@ -108,6 +169,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   @override
   void dispose() {
     _tripSubscription?.cancel();
+    _locationSubscription?.cancel();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -148,16 +211,31 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
           Positioned(
             top: 0, left: 0, right: 0,
             height: mapHeight,
-             child: const GoogleMap(
-               initialCameraPosition: CameraPosition(
-                 target: LatLng(17.3850, 78.4867),
-                 zoom: 13,
-               ),
-               zoomControlsEnabled: false,
-               myLocationButtonEnabled: false,
-               mapToolbarEnabled: false,
-               compassEnabled: false,
-             ),
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _driverLatLng ?? _pickupLatLng,
+                zoom: 14,
+              ),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                setState(() {
+                  _markers = {
+                    Marker(
+                      markerId: const MarkerId('pickup'),
+                      position: _pickupLatLng,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                      infoWindow: const InfoWindow(title: 'Patient pickup'),
+                    ),
+                  };
+                });
+              },
+              markers: _markers,
+              polylines: _polylines,
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+            ),
           ),
           
           // Floating Bottom Navigation Pill (like original tracking screen)

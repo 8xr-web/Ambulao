@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../widgets/location_search_bar.dart';
 import '../core/theme.dart';
 
@@ -17,48 +14,14 @@ class DropoffLocationScreen extends StatefulWidget {
 }
 
 class _DropoffLocationScreenState extends State<DropoffLocationScreen> {
-  final LatLng _defaultLocation = const LatLng(17.3850, 78.4867);
+  static const LatLng _defaultLocation = LatLng(17.3850, 78.4867);
   LatLng? _currentLocation;
-  late final MapController _mapController;
-  List<LatLng> _routePoints = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _mapController = MapController();
-  }
+  GoogleMapController? _mapController;
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     super.dispose();
-  }
-
-  Future<void> _fetchRoute() async {
-    if (widget.pickupLocation == null || _currentLocation == null) return;
-
-    final start = widget.pickupLocation!;
-    final end = _currentLocation!;
-    final url = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?geometries=geojson');
-
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final routes = data['routes'] as List;
-        if (routes.isNotEmpty) {
-          final geometry = routes[0]['geometry'];
-          final coordinates = geometry['coordinates'] as List;
-          setState(() {
-            _routePoints =
-                coordinates.map((coord) => LatLng(coord[1], coord[0])).toList();
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) _showSnack('Error fetching route: $e');
-    }
   }
 
   Future<void> _locateMe() async {
@@ -88,13 +51,8 @@ class _DropoffLocationScreenState extends State<DropoffLocationScreen> {
     try {
       final position = await Geolocator.getCurrentPosition();
       final newLatLng = LatLng(position.latitude, position.longitude);
-
-      setState(() {
-        _currentLocation = newLatLng;
-      });
-
-      _mapController.move(newLatLng, 15.0);
-      _fetchRoute(); // Fetch route after locating
+      setState(() { _currentLocation = newLatLng; });
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newLatLng, 15.0));
     } catch (e) {
       if (mounted) _showSnack('Error getting location: $e');
     }
@@ -113,6 +71,8 @@ class _DropoffLocationScreenState extends State<DropoffLocationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final initialTarget = widget.pickupLocation ?? _defaultLocation;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -124,8 +84,7 @@ class _DropoffLocationScreenState extends State<DropoffLocationScreen> {
               padding: const EdgeInsets.all(8),
               decoration: const BoxDecoration(
                   color: Colors.black26, shape: BoxShape.circle),
-              child:
-                  const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+              child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
             ),
             onPressed: () => Navigator.of(context).pop(),
           );
@@ -150,81 +109,49 @@ class _DropoffLocationScreenState extends State<DropoffLocationScreen> {
               heroTag: "btn_confirm_dropoff",
               onPressed: _confirmLocation,
               backgroundColor: AppColors.primaryBlue,
-              label:
-                  const Text("Confirm", style: TextStyle(color: Colors.white)),
+              label: const Text("Confirm", style: TextStyle(color: Colors.white)),
               icon: const Icon(Icons.check, color: Colors.white),
             ),
         ],
       ),
-      body: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          initialCenter: widget.pickupLocation ?? _defaultLocation,
-          initialZoom: 13.0,
-          onTap: (_, point) {
-            setState(() {
-              _currentLocation = point;
-            });
-            _fetchRoute(); // Fetch route on tap
-          },
+      body: GoogleMap(
+        initialCameraPosition: CameraPosition(
+          target: initialTarget,
+          zoom: 13.0,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.flutter_hello_world',
-          ),
-          // Draw Route Polyline
-          if (_routePoints.isNotEmpty)
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: _routePoints,
-                  color: AppColors.primaryBlue,
-                  strokeWidth: 4.0,
-                ),
-              ],
-            ),
-          // Fallback: Straight line if no route points but we have both locations
-          if (_routePoints.isEmpty &&
-              widget.pickupLocation != null &&
-              _currentLocation != null)
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: [widget.pickupLocation!, _currentLocation!],
-                  color: AppColors.primaryBlue.withValues(alpha: 0.5),
-                  strokeWidth: 4.0,
-                  pattern: const StrokePattern.dotted(),
-                ),
-              ],
-            ),
-          // Pickup Marker (Green)
+        myLocationEnabled: true,
+        myLocationButtonEnabled: false,
+        zoomControlsEnabled: false,
+        mapToolbarEnabled: false,
+        onMapCreated: (controller) => _mapController = controller,
+        onTap: (point) {
+          setState(() { _currentLocation = point; });
+        },
+        markers: {
           if (widget.pickupLocation != null)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: widget.pickupLocation!,
-                  width: 80,
-                  height: 80,
-                  child: const Icon(Icons.location_on,
-                      size: 50, color: Colors.green),
-                ),
-              ],
+            Marker(
+              markerId: const MarkerId('pickup'),
+              position: widget.pickupLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+              infoWindow: const InfoWindow(title: 'Pickup'),
             ),
-          // Dropoff Marker (Red) - The one we are selecting
           if (_currentLocation != null)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _currentLocation!,
-                  width: 80,
-                  height: 80,
-                  child: const Icon(Icons.location_on,
-                      size: 50, color: AppColors.primaryBlue),
-                ),
-              ],
+            Marker(
+              markerId: const MarkerId('dropoff'),
+              position: _currentLocation!,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              infoWindow: const InfoWindow(title: 'Dropoff'),
             ),
-        ],
+        },
+        polylines: {
+          if (widget.pickupLocation != null && _currentLocation != null)
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: [widget.pickupLocation!, _currentLocation!],
+              color: AppColors.primaryBlue,
+              width: 4,
+            ),
+        },
       ),
     );
   }

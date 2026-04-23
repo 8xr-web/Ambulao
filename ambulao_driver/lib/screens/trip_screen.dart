@@ -4,6 +4,7 @@ import 'package:ambulao_driver/core/theme.dart';
 import 'package:ambulao_driver/services/trip_service.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/trip_completed_screen.dart';
+import 'package:ambulao_driver/services/location_service.dart';
 
 class TripScreen extends StatefulWidget {
   final String tripId;
@@ -37,6 +38,9 @@ class _TripScreenState extends State<TripScreen> {
         driverId: driverId,
         fare: widget.estimatedFare,
       );
+
+      // ── Stop sending GPS location ─────────────────────────────────────────
+      LocationService.instance.stopTracking();
 
       if (!mounted) return;
       Navigator.pushReplacement(
