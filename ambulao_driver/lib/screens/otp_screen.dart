@@ -314,15 +314,14 @@ class _OtpScreenState extends State<OtpScreen> {
               ),
               const SizedBox(height: 40),
 
-              // 6 OTP boxes (56×64 each, 10px spacing)
+              // 6 OTP boxes
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: List.generate(
                   6,
-                  (i) => Container(
-                    width: 56,
-                    height: 64,
-                    margin: EdgeInsets.only(right: i < 5 ? 8 : 0),
+                  (i) => SizedBox(
+                    width: 46,
+                    height: 56,
                     child: TextField(
                       controller: _controllers[i],
                       focusNode: _focusNodes[i],
@@ -330,7 +329,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       keyboardType: TextInputType.number,
                       maxLength: 1,
                       style: const TextStyle(
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF0A1F44),
                       ),
@@ -338,20 +337,21 @@ class _OtpScreenState extends State<OtpScreen> {
                         counterText: '',
                         filled: true,
                         fillColor: Colors.white,
+                        contentPadding: EdgeInsets.zero,
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(
                             color: AppTheme.primaryBlue.withValues(alpha: 0.2),
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(
                             color: AppTheme.primaryBlue.withValues(alpha: 0.2),
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                           borderSide: const BorderSide(
                             color: AppTheme.primaryBlue,
                             width: 2,

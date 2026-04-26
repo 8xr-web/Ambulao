@@ -25,9 +25,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   bool _notificationsSkipped = false;
 
   bool get _canContinue =>
-      (_locationGranted || _locationSkipped) &&
-      (_overlayGranted || _overlaySkipped) &&
-      (_notificationsGranted || _notificationsSkipped);
+      _locationGranted && _overlayGranted && _notificationsGranted;
 
   Future<void> _requestLocation() async {
     setState(() => _locationRequested = true);
@@ -249,7 +247,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               else if (skipped)
                 Row(
                   children: [
-                    const Text('Skipped', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.w700, fontSize: 13)),
+                    const Text('Skipped (Required)', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.w700, fontSize: 13)),
                     const Spacer(),
                     _buildAllowButton(onRequest),
                   ],
@@ -258,6 +256,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                 Row(
                   children: [
                     TextButton(
+                      // Make strictly sure this calls onSkip
                       onPressed: onSkip,
                       style: TextButton.styleFrom(
                         foregroundColor: AppTheme.textSecondary,
@@ -267,6 +266,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                       child: const Text('Skip for now', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(width: 8),
+                    // Make strictly sure this calls onRequest
                     _buildAllowButton(onRequest),
                   ],
                 ),

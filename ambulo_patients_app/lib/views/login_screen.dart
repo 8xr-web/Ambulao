@@ -473,9 +473,9 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   final List<TextEditingController> _controllers =
-      List.generate(4, (_) => TextEditingController());
+      List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes =
-      List.generate(4, (_) => FocusNode());
+      List.generate(6, (_) => FocusNode());
   int _secondsLeft = 30;
   Timer? _timer;
   bool _isVerifying = false;
@@ -709,15 +709,14 @@ class _OtpScreenState extends State<OtpScreen> {
             ),
             const SizedBox(height: 32),
 
-            // 4 OTP boxes — patient app uses 4-digit internal testing OTP
+            // 6 OTP boxes
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: List.generate(
-                4,
-                (i) => Container(
-                  width: 56,
-                  height: 64,
-                  margin: EdgeInsets.only(right: i < 3 ? 12 : 0),
+                6,
+                (i) => SizedBox(
+                  width: 46,
+                  height: 56,
                   child: TextField(
                     controller: _controllers[i],
                     focusNode: _focusNodes[i],
@@ -729,7 +728,7 @@ class _OtpScreenState extends State<OtpScreen> {
                     textAlign: TextAlign.center,
                     textAlignVertical: TextAlignVertical.center,
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF1A6FE8),
                     ),
@@ -755,7 +754,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       ),
                     ),
                     onChanged: (val) {
-                      if (val.isNotEmpty && i < 3) {
+                      if (val.isNotEmpty && i < 5) {
                         _focusNodes[i + 1].requestFocus();
                       }
                       if (val.isEmpty && i > 0) {
