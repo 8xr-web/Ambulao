@@ -116,7 +116,7 @@ class _IncomingRequestScreenState extends State<IncomingRequestScreen>
         }, SetOptions(merge: true));
 
         // ── Start sending GPS location to Firestore every 5 s ──────────────
-        LocationService.instance.startTracking(driverId);
+        LocationService.startTracking(driverId);
       }
 
       if (!mounted) return;

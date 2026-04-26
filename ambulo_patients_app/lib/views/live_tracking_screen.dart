@@ -47,6 +47,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   GoogleMapController? _mapController;
   LatLng? _driverLatLng;
   late LatLng _pickupLatLng;
+  LatLng? _hospitalLatLng;   // destination / drop-off
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
 
@@ -62,17 +63,23 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     _locationSubscription = FirebaseFirestore.instance
         .collection('drivers')
         .doc(widget.driverId)
-        .collection('location')
-        .doc('current')
         .snapshots()
         .listen((snap) {
       if (!snap.exists || !mounted) return;
       final d = snap.data()!;
-      final lat = (d['lat'] as num?)?.toDouble();
-      final lng = (d['lng'] as num?)?.toDouble();
+      // Driver app writes: drivers/{id} → { location: { lat: x, lng: y } }
+      final location = d['location'] as Map<String, dynamic>?;
+      if (location == null) return;
+      final lat = (location['lat'] as num?)?.toDouble();
+      final lng = (location['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) return;
+      if (lat == 0.0 && lng == 0.0) return;
 
       final newPos = LatLng(lat, lng);
+      // Use hospital/destination as the polyline endpoint if available,
+      // otherwise fall back to the pickup point.
+      final destPos = _hospitalLatLng ?? _pickupLatLng;
+
       setState(() {
         _driverLatLng = newPos;
         _markers = {
@@ -83,16 +90,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             infoWindow: InfoWindow(title: widget.driverName, snippet: 'En route to hospital'),
           ),
           Marker(
-            markerId: const MarkerId('pickup'),
-            position: _pickupLatLng,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-            infoWindow: const InfoWindow(title: 'Patient pickup'),
+            markerId: const MarkerId('hospital'),
+            position: destPos,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            infoWindow: InfoWindow(
+                title: 'Hospital',
+                snippet: widget.dropAddress.isNotEmpty ? widget.dropAddress : 'Destination'),
           ),
         };
         _polylines = {
           Polyline(
             polylineId: const PolylineId('route'),
-            points: [newPos, _pickupLatLng],
+            points: [newPos, destPos],
             color: const Color(0xFF1A6FE8),
             width: 4,
             patterns: [PatternItem.dash(20), PatternItem.gap(10)],
@@ -100,8 +109,24 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         };
       });
 
-      _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
+      // Fit driver and hospital/destination in view
+      _fitBounds(newPos, destPos);
     }, onError: (e) => debugPrint('LiveTracking location error: $e'));
+  }
+
+  void _fitBounds(LatLng a, LatLng b) {
+    if (_mapController == null) return;
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        a.latitude < b.latitude ? a.latitude : b.latitude,
+        a.longitude < b.longitude ? a.longitude : b.longitude,
+      ),
+      northeast: LatLng(
+        a.latitude > b.latitude ? a.latitude : b.latitude,
+        a.longitude > b.longitude ? a.longitude : b.longitude,
+      ),
+    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
   }
 
   void _listenForCompletion() {

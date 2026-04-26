@@ -70,15 +70,17 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
     _locationSubscription = FirebaseFirestore.instance
         .collection('drivers')
         .doc(widget.driverId)
-        .collection('location')
-        .doc('current')
         .snapshots()
         .listen((snap) {
       if (!snap.exists || !mounted) return;
       final d = snap.data()!;
-      final lat = (d['lat'] as num?)?.toDouble();
-      final lng = (d['lng'] as num?)?.toDouble();
+      // Driver app writes: drivers/{id} → { location: { lat: x, lng: y } }
+      final location = d['location'] as Map<String, dynamic>?;
+      if (location == null) return;
+      final lat = (location['lat'] as num?)?.toDouble();
+      final lng = (location['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) return;
+      if (lat == 0.0 && lng == 0.0) return;
 
       final newPos = LatLng(lat, lng);
       setState(() {
@@ -108,11 +110,24 @@ class _AmbulanceAssignedScreenState extends State<AmbulanceAssignedScreen>
         };
       });
 
-      // Smooth camera follow
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLng(newPos),
-      );
+      // Fit both driver and pickup in view
+      _fitBounds(newPos, _pickupLatLng);
     }, onError: (e) => debugPrint('Driver location error: $e'));
+  }
+
+  void _fitBounds(LatLng a, LatLng b) {
+    if (_mapController == null) return;
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        a.latitude < b.latitude ? a.latitude : b.latitude,
+        a.longitude < b.longitude ? a.longitude : b.longitude,
+      ),
+      northeast: LatLng(
+        a.latitude > b.latitude ? a.latitude : b.latitude,
+        a.longitude > b.longitude ? a.longitude : b.longitude,
+      ),
+    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
   }
 
   void _listenForTripUpdates() {

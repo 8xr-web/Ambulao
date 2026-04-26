@@ -7,6 +7,7 @@ import 'package:ambulao_driver/widgets/map_background_mock.dart';
 import 'package:ambulao_driver/screens/incoming_request_screen.dart';
 import 'package:ambulao_driver/screens/earnings_screen.dart';
 import 'package:ambulao_driver/services/trip_service.dart';
+import 'package:ambulao_driver/services/location_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -141,6 +142,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _onlineStartTime = null;
     _seenTripIds.clear(); // reset seen trips for next session
     _timer?.cancel();
+
+    // Stop GPS broadcasting immediately
+    LocationService.stopTracking();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('driver_is_online', false);

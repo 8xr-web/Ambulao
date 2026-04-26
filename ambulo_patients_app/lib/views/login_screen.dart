@@ -548,8 +548,16 @@ class _OtpScreenState extends State<OtpScreen> {
       }
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
+
+      // Update AuthViewModel BEFORE navigating — this lets AuthGateScreen
+      // cleanly rebuild (showing LocationPermissionScreen) before we replace
+      // the route, which prevents the _dependents.isEmpty assertion crash.
+      await context.read<AuthViewModel>().signInWithOtpToken(user?.uid ?? 'otp');
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
         SmoothPageRoute(page: const MainLayout()),
+        (_) => false,
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;

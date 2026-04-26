@@ -1,61 +1,64 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Singleton service that streams the driver's GPS position to Firestore
-/// every 5 seconds during an active trip.
+/// Broadcasts the driver's GPS position to Firestore every 5 seconds.
 ///
-/// Firestore path:  drivers/{driverId}/location/current
-/// Fields written:  { lat, lng, timestamp }
+/// Firestore path written:
+///   drivers/{driverId}  →  { location: { lat, lng, updated_at } }
 ///
 /// Usage:
-///   LocationService.instance.startTracking(driverId);   // on trip accept
-///   LocationService.instance.stopTracking();             // on trip end
+///   await LocationService.startTracking(driverId);   // on trip accept
+///   LocationService.stopTracking();                   // on trip end / go offline
 class LocationService {
-  LocationService._();
-  static final LocationService instance = LocationService._();
+  static Timer? _timer;
+  static bool _isTracking = false;
 
-  Timer? _timer;
-  String? _driverId;
-  bool _isTracking = false;
+  static bool get isTracking => _isTracking;
 
-  bool get isTracking => _isTracking;
+  // ─── Public API ────────────────────────────────────────────────────────────
 
-  /// Requests location permission, then starts a 5-second periodic timer
-  /// that writes the current GPS fix to Firestore.
-  Future<void> startTracking(String driverId) async {
+  static Future<bool> requestPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return false;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    return permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
+  }
+
+  static Future<void> startTracking(String driverId) async {
     if (_isTracking) return; // already running
 
-    final hasPermission = await _ensurePermission();
-    if (!hasPermission) {
-      debugPrint('LocationService: location permission denied, tracking aborted.');
-      return;
-    }
+    final hasPermission = await requestPermission();
+    if (!hasPermission) return;
 
-    _driverId = driverId;
     _isTracking = true;
 
-    // Write immediately on start, then every 5 s
-    await _writeLocation();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _writeLocation());
-    debugPrint('LocationService: started tracking for driver $_driverId');
+    // Send immediately on start, then every 5 seconds
+    await _sendLocation(driverId);
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!_isTracking) {
+        timer.cancel();
+        return;
+      }
+      await _sendLocation(driverId);
+    });
   }
 
-  /// Cancels the timer and clears the tracking state.
-  void stopTracking() {
+  static void stopTracking() {
+    _isTracking = false;
     _timer?.cancel();
     _timer = null;
-    _isTracking = false;
-    debugPrint('LocationService: stopped tracking for driver $_driverId');
-    _driverId = null;
   }
 
-  // ─── Private helpers ───────────────────────────────────────────────────────
+  // ─── Private helpers ────────────────────────────────────────────────────────
 
-  Future<void> _writeLocation() async {
-    if (_driverId == null || _driverId!.isEmpty) return;
-
+  static Future<void> _sendLocation(String driverId) async {
+    if (driverId.isEmpty) return;
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -64,39 +67,22 @@ class LocationService {
         ),
       );
 
+      // Write to the ROOT driver document (not a subcollection).
+      // Patient app reads: drivers/{driverId} → data['location']['lat/lng']
       await FirebaseFirestore.instance
           .collection('drivers')
-          .doc(_driverId)
-          .collection('location')
-          .doc('current')
-          .set({
-        'lat': position.latitude,
-        'lng': position.longitude,
-        'timestamp': FieldValue.serverTimestamp(),
+          .doc(driverId)
+          .update({
+        'location': {
+          'lat': position.latitude,
+          'lng': position.longitude,
+          'updated_at': FieldValue.serverTimestamp(),
+        },
       });
-
-      debugPrint(
-          'LocationService: wrote (${position.latitude}, ${position.longitude}) for $_driverId');
     } catch (e) {
-      debugPrint('LocationService: failed to write location – $e');
+      // Silently continue — don't crash the app if one update fails
+      // ignore: avoid_print
+      print('LocationService: update failed – $e');
     }
-  }
-
-  Future<bool> _ensurePermission() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('LocationService: GPS service disabled.');
-      return false;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return false;
-    }
-
-    if (permission == LocationPermission.deniedForever) return false;
-
-    return true;
   }
 }
