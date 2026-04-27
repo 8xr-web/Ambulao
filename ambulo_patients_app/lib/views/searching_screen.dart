@@ -353,7 +353,7 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
                        Text("4 min", style: TextStyle(color: AppColors.primaryBlue, fontSize: 13, fontWeight: FontWeight.bold)),
                      ],
                    ),
-                   const Spacer(),
+                   const SizedBox(height: 32),
                    
                    // Cancel Button
                    Padding(

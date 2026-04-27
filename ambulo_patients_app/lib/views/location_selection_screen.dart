@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:location/location.dart' as loc;
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'dart:async';
 import '../core/theme.dart';
 import '../core/transitions.dart';
 import '../models/booking_args.dart';
@@ -36,6 +42,12 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
   late final TextEditingController _pickupCtrl;
   late final TextEditingController _dropCtrl;
   final FocusNode _focusNode = FocusNode();
+  GoogleMapController? _mapController;
+  final loc.Location _location = loc.Location();
+  Timer? _debounce;
+  List<Map<String, dynamic>> _autocompleteResults = [];
+  String? _placesError;
+  final String _googleApiKey = 'AIzaSyCOn3vZ5LubquMbkeE4w_onCXnuFQ1ttnU';
 
   // Typed pickup override — null means "use GPS"
   String? _pickupOverride;
@@ -64,6 +76,7 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _pickupCtrl.dispose();
     _dropCtrl.dispose();
     _focusNode.dispose();
@@ -77,10 +90,28 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
     _focusNode.requestFocus();
   }
 
-  void _goToBook(String destinationAddress, String? destinationArea, {double? lat, double? lng}) {
+  Future<void> _goToBook(String destinationAddress, String? destinationArea, {double? lat, double? lng}) async {
     final user = context.read<UserProvider>();
     final String pickupAddr = _pickupOverride ?? user.address;
     
+    // Attempt Geocoding if user typed text but no coordinates are attached
+    double? finalLat = _pickupOverride != null ? _pickupLat : user.latitude;
+    double? finalLng = _pickupOverride != null ? _pickupLng : user.longitude;
+
+    if (_pickupOverride != null && _pickupLat == null) {
+      try {
+        List<Location> locations = await locationFromAddress(_pickupOverride!);
+        if (locations.isNotEmpty) {
+          finalLat = locations.first.latitude;
+          finalLng = locations.first.longitude;
+        }
+      } catch (e) {
+        // Fallback to user current location if we can't find the typed one
+        finalLat = user.latitude;
+        finalLng = user.longitude;
+      }
+    }
+
     String finalDestination;
     if (destinationArea != null && destinationArea.isNotEmpty) {
       finalDestination = '$destinationAddress, $destinationArea';
@@ -88,6 +119,7 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
       finalDestination = destinationAddress;
     }
 
+    if (!mounted) return;
     Navigator.of(context).pop(); // pop off location screen
     MainLayout.homeNavKey.currentState?.push(
       SmoothPageRoute(
@@ -96,8 +128,8 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
             ambulanceType: widget.ambulanceType,
             pickup: pickupAddr,
             destination: finalDestination,
-            lat: _pickupOverride != null ? _pickupLat : user.latitude,
-            lng: _pickupOverride != null ? _pickupLng : user.longitude,
+            lat: finalLat ?? user.latitude,
+            lng: finalLng ?? user.longitude,
           ),
         ),
       ),
@@ -121,11 +153,57 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
       _pickupCtrl.clear();
       _pickupLat = null;
       _pickupLng = null;
+      _autocompleteResults.clear();
     });
   }
 
   Future<void> _handleAutocomplete(String input) async {
-    // To be implemented: Integrate Google Places SDK for real autocomplete
+    final query = input.trim();
+    if (query.isEmpty) {
+      if (mounted) setState(() { 
+        _autocompleteResults.clear();
+        _placesError = null;
+      });
+      return;
+    }
+    
+    if (mounted) setState(() => _placesError = null);
+
+    final url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$query&key=$_googleApiKey&components=country:in';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK') {
+          final predictions = data['predictions'] as List;
+          if (mounted) {
+            setState(() {
+              _autocompleteResults = predictions.map((p) => {
+                'name': p['structured_formatting']['main_text'],
+                'area': p['structured_formatting']['secondary_text'] ?? '',
+                'distance': ''
+              }).toList();
+            });
+          }
+        } else if (data['status'] == 'ZERO_RESULTS') {
+            if (mounted) setState(() {
+               _autocompleteResults.clear();
+               _placesError = "No results found.";
+            });
+        } else {
+            if (mounted) setState(() {
+               _placesError = "STATUS: ${data['status']}\nFULL RESPONSE: ${response.body}";
+               _autocompleteResults.clear();
+            });
+            debugPrint("Places API Error: ${data['error_message'] ?? data['status']}");
+        }
+      } else {
+          if (mounted) setState(() { _placesError = "HTTP Error: ${response.statusCode}"; });
+      }
+    } catch (e) {
+      debugPrint("Autocomplete API error: $e");
+      if (mounted) setState(() { _placesError = "Exception: $e"; });
+    }
   }
 
   List<Map<String, dynamic>> get _filteredHospitals {
@@ -151,15 +229,41 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
           Positioned(
             top: 0, left: 0, right: 0,
             height: mediaQuery.size.height * 0.46,
-            child: const GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: LatLng(17.3850, 78.4867),
-                zoom: 13,
-              ),
-              zoomControlsEnabled: false,
-              myLocationButtonEnabled: false,
-              mapToolbarEnabled: false,
-              compassEnabled: false,
+            child: Consumer<UserProvider>(
+              builder: (context, user, child) {
+                final initialPos = (user.latitude != null && user.longitude != null)
+                    ? LatLng(user.latitude!, user.longitude!)
+                    : const LatLng(17.3850, 78.4867);
+
+                return GoogleMap(
+                  onMapCreated: (controller) async {
+                    _mapController = controller;
+                    var status = await Permission.locationWhenInUse.request();
+                    if (status.isGranted) {
+                      try {
+                        var locationData = await _location.getLocation();
+                        if (locationData.latitude != null && locationData.longitude != null) {
+                          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                            LatLng(locationData.latitude!, locationData.longitude!),
+                            15,
+                          ));
+                        }
+                      } catch (e) {
+                        debugPrint("Location error: $e");
+                      }
+                    }
+                  },
+                  initialCameraPosition: CameraPosition(
+                    target: initialPos,
+                    zoom: 15,
+                  ),
+                  zoomControlsEnabled: false,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                );
+              },
             ),
           ),
 
@@ -248,7 +352,10 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
                             focusNode: _focusNode,
                             onChanged: (val) {
                               setState(() {});
-                              _handleAutocomplete(val); // Trigger autocomplete
+                              if (_debounce?.isActive ?? false) _debounce!.cancel();
+                              _debounce = Timer(const Duration(milliseconds: 500), () {
+                                _handleAutocomplete(val);
+                              });
                             },
                             decoration: InputDecoration(
                               hintText: isPickup
@@ -366,7 +473,43 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
                     const SizedBox(height: 14),
                   ],
 
-                  // â”€â”€ Hospitals section (always for hospital transfer, or drop tab) â”€â”€
+                  // —— API Error Display ——
+                  if (_placesError != null) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(12)),
+                      child: Row(
+                        children: [
+                           const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 20),
+                           const SizedBox(width: 8),
+                           Expanded(child: Text('API Response: $_placesError', style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13))),
+                        ]
+                      )
+                    ),
+                  ],
+
+                  // —— Suggested Locations based on search ——
+                  if (_autocompleteResults.isNotEmpty && !hospitalTransfer) ...[
+                    const Text('SUGGESTED LOCATIONS', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6)),
+                    const SizedBox(height: 8),
+                    ..._autocompleteResults.map((loc) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GestureDetector(
+                        onTap: () {
+                          if (isPickup) {
+                            _selectPickup('${loc['name']}, ${loc['area']}');
+                          } else {
+                            _goToBook(loc['name'] as String, loc['area'] as String);
+                          }
+                        },
+                        child: _buildLocationRowWidget(loc),
+                      ),
+                    )),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // —— Hospitals section (always for hospital transfer, or drop tab) ——
                   if (!isPickup || hospitalTransfer) ...[
                     const Text('NEARBY HOSPITALS', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6)),
                     const SizedBox(height: 8),
@@ -478,6 +621,34 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
           )).toList()),
         ])),
         if (isPickupMode)
+          const Icon(Icons.arrow_forward_ios, color: Color(0xFF9CA3AF), size: 14),
+      ]),
+    );
+  }
+
+  Widget _buildLocationRowWidget(Map<String, dynamic> loc) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF0F0F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Row(children: [
+        Container(
+          width: 42, height: 42,
+          decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(11)),
+          // Use location pin instead of business icon
+          child: const Icon(Icons.location_on, color: Color(0xFF6E6E73), size: 22), 
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(loc['name'] as String, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 3),
+          Text('${loc['area']} • ${loc['distance']}', style: const TextStyle(color: Color(0xFF6E6E73), fontSize: 12)),
+        ])),
+        if (_activeTab == LocTab.pickup)
           const Icon(Icons.arrow_forward_ios, color: Color(0xFF9CA3AF), size: 14),
       ]),
     );
