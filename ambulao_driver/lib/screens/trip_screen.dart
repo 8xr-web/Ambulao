@@ -40,7 +40,7 @@ class _TripScreenState extends State<TripScreen> {
       );
 
       // ── Stop sending GPS location ─────────────────────────────────────────
-      LocationService.instance.stopTracking();
+      LocationService.stopTracking();
 
       if (!mounted) return;
       Navigator.pushReplacement(

@@ -15,9 +15,17 @@ import 'notifications_screen.dart';
 import 'nurse_booking_screen.dart';
 import 'profile_screen.dart';
 import 'package:flutter_hello_world/localisation/app_localizations.dart';
+import '../widgets/home_screen_mini_map.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  // State variables for map moved to HomeScreenMiniMap
 
   // Navigate directly to Book Ambulance (skip location selection)
   void _goDirectToBook(BuildContext context, String destination, String ambulanceType) {
@@ -196,6 +204,10 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
               ),
+
+              // ── 40% Map Area ──
+              const HomeScreenMiniMap(),
+              const SizedBox(height: 16),
 
               // Location Input Card
               Container(
