@@ -10,6 +10,10 @@ import 'main_layout.dart';
 import 'ambulance_assigned_screen.dart';
 import 'live_tracking_screen.dart';
 import 'trip_completed_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:location/location.dart' as loc;
+import 'package:permission_handler/permission_handler.dart';
+import '../viewmodels/user_provider.dart';
 
 class SearchingScreen extends StatefulWidget {
   final BookingArgs args;
@@ -23,6 +27,8 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
   late AnimationController _sonarController;
   StreamSubscription<DocumentSnapshot>? _tripSubscription;
   String? _currentTripId;
+  GoogleMapController? _mapController;
+  final loc.Location _location = loc.Location();
 
   @override
   void initState() {
@@ -193,25 +199,50 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
         children: [
           // 1. Google Map Background
           Positioned.fill(
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(
-                // Use real pickup coordinates or fall back to Hyderabad city center
-                target: LatLng(widget.args.lat ?? 17.3850, widget.args.lng ?? 78.4867),
-                zoom: 15,
-              ),
-              zoomControlsEnabled: false,
-              myLocationButtonEnabled: false,
-              mapToolbarEnabled: false,
-              compassEnabled: false,
-              // All gestures are enabled by default
-              markers: {
-                if (widget.args.lat != null && widget.args.lng != null)
-                  Marker(
-                    markerId: const MarkerId('pickup'),
-                    position: LatLng(widget.args.lat!, widget.args.lng!),
-                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-                    infoWindow: InfoWindow(title: 'Your Pickup', snippet: widget.args.pickup),
+            child: Consumer<UserProvider>(
+              builder: (context, user, child) {
+                final initialPos = (user.latitude != null && user.longitude != null)
+                    ? LatLng(user.latitude!, user.longitude!)
+                    : LatLng(widget.args.lat ?? 17.3850, widget.args.lng ?? 78.4867);
+
+                return GoogleMap(
+                  onMapCreated: (controller) async {
+                    _mapController = controller;
+                    var status = await Permission.locationWhenInUse.request();
+                    if (status.isGranted) {
+                      try {
+                        var locationData = await _location.getLocation();
+                        if (locationData.latitude != null && locationData.longitude != null) {
+                          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                            LatLng(locationData.latitude!, locationData.longitude!),
+                            15,
+                          ));
+                        }
+                      } catch (e) {
+                        debugPrint("Location error: $e");
+                      }
+                    }
+                  },
+                  initialCameraPosition: CameraPosition(
+                    target: initialPos,
+                    zoom: 15,
                   ),
+                  zoomControlsEnabled: false,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                  // All gestures are enabled by default
+                  markers: {
+                    if (widget.args.lat != null && widget.args.lng != null)
+                      Marker(
+                        markerId: const MarkerId('pickup'),
+                        position: LatLng(widget.args.lat!, widget.args.lng!),
+                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                        infoWindow: InfoWindow(title: 'Your Pickup', snippet: widget.args.pickup),
+                      ),
+                  },
+                );
               },
             ),
           ),

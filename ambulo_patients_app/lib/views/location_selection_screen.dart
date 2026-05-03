@@ -13,6 +13,8 @@ import '../models/booking_args.dart';
 import '../viewmodels/user_provider.dart';
 import 'main_layout.dart';
 import 'ambulance_selection_screen.dart';
+import 'pickup_location_screen.dart';
+import 'destination_selection_screen.dart';
 
 /// Tab enum for location selection
 enum LocTab { pickup, drop }
@@ -145,6 +147,28 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
     });
     // Switch to drop tab after selecting pickup
     _switchTab(LocTab.drop);
+  }
+
+  Future<void> _handlePickedLocation(LatLng point, {required bool isPickup}) async {
+    String addr = "Selected Map Location";
+    String area = "";
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(point.latitude, point.longitude);
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        final name = [p.name, p.thoroughfare].where((e) => e != null && e.isNotEmpty).join(', ');
+        addr = name.isNotEmpty ? name : "Selected Location";
+        area = p.subLocality ?? p.locality ?? '';
+      }
+    } catch(e) {
+      debugPrint("Reverse geocoding error: $e");
+    }
+
+    if (isPickup) {
+      _selectPickup(area.isNotEmpty ? "$addr, $area" : addr, lat: point.latitude, lng: point.longitude);
+    } else {
+      _goToBook(addr, area, lat: point.latitude, lng: point.longitude);
+    }
   }
 
   void _clearPickupOverride() {
@@ -442,6 +466,50 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
                     ),
                     const SizedBox(height: 14),
                   ],
+
+                  // —— Select location via map ——
+                  GestureDetector(
+                    onTap: () async {
+                      if (isPickup) {
+                        final LatLng? picked = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PickupLocationScreen()),
+                        );
+                        if (picked != null) _handlePickedLocation(picked, isPickup: true);
+                      } else {
+                        final user = context.read<UserProvider>();
+                        final LatLng initial = LatLng(_pickupLat ?? user.latitude ?? 17.3850, _pickupLng ?? user.longitude ?? 78.4867);
+                        final LatLng? picked = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => DestinationSelectionScreen(initialLocation: initial)),
+                        );
+                        if (picked != null) _handlePickedLocation(picked, isPickup: false);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                      ),
+                      child: Row(children: [
+                        Container(
+                          width: 38, height: 38,
+                          decoration: const BoxDecoration(color: Color(0xFFFFF7ED), shape: BoxShape.circle),
+                          child: const Icon(Icons.map_outlined, color: Color(0xFFEA580C), size: 18),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Select via map', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 2),
+                          Text('Pinpoint location exactly on the map', style: TextStyle(color: Color(0xFF6E6E73), fontSize: 12)),
+                        ])),
+                        const Icon(Icons.arrow_forward_ios, color: Color(0xFF9CA3AF), size: 14),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
 
                   // —— Custom Location using typed text ——
                   if (isPickup && _pickupCtrl.text.trim().isNotEmpty) ...[
