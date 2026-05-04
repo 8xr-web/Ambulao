@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:ambulao_driver/core/theme.dart';
 import 'package:ambulao_driver/widgets/bottom_sheet_card.dart';
 import 'package:ambulao_driver/widgets/map_background_mock.dart';
@@ -41,6 +42,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _loadOnlineStatus();
       }
     });
+    _setupFCM();
   }
 
   Future<void> _loadOnlineStatus() async {
@@ -49,6 +51,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isOnline = prefs.getBool('driver_is_online') ?? false;
     });
     if (isOnline) _startOnlineTimer();
+  }
+
+  /// Requests Android 13+ notification permission, saves FCM token to
+  /// Firestore, and sets up foreground + background-tap listeners.
+  Future<void> _setupFCM() async {
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final driverId = prefs.getString('driver_uid') ?? '';
+      if (driverId.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('drivers')
+              .doc(driverId)
+              .set({'fcm_token': token}, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('FCM token save failed: $e');
+        }
+      }
+    }
+
+    // Foreground messages — show incoming request if driver is online
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.data['type'] == 'new_trip' && isOnline && mounted) {
+        final tripId = message.data['trip_id'] as String? ?? '';
+        if (tripId.isNotEmpty && !_seenTripIds.contains(tripId)) {
+          _seenTripIds.add(tripId);
+          _showIncomingRequest(tripId, Map<String, dynamic>.from(message.data));
+        }
+      }
+    });
+
+    // Notification tap when app is in background / terminated
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (message.data['type'] == 'new_trip' && mounted) {
+        // Navigate to home so the Firestore listener picks up pending trips
+        Navigator.of(context, rootNavigator: true)
+            .pushNamedAndRemoveUntil('/', (route) => false);
+      }
+    });
   }
 
   void _startOnlineTimer() {

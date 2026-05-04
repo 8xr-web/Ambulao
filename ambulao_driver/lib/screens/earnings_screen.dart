@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'package:ambulao_driver/core/theme.dart';
 import 'package:ambulao_driver/screens/earnings_activity_screen.dart';
 import 'package:ambulao_driver/screens/wallet_screen.dart';
@@ -37,86 +40,6 @@ class _BarEntry {
   const _BarEntry(this.label, this.amount);
 }
 
-final _periodData = [
-  _PeriodData(
-    label: 'This Week',
-    earnings: '₹2,840',
-    earningsInt: 2840,
-    prevEarnings: 4120,
-    trips: '18',
-    hours: '24.5h',
-    acceptance: '94%',
-    rating: '4.92',
-    chartBars: const [
-      _BarEntry('Mon', 320), _BarEntry('Tue', 580), _BarEntry('Wed', 240),
-      _BarEntry('Thu', 410), _BarEntry('Fri', 620), _BarEntry('Sat', 490), _BarEntry('Sun', 180),
-    ],
-    tripList: [
-      {'time': 'Today 8:30 AM', 'dist': '3.2 km', 'amt': '₹280', 'type': 'Emergency'},
-      {'time': 'Today 11:00 AM', 'dist': '5.1 km', 'amt': '₹420', 'type': 'Transfer'},
-      {'time': 'Yesterday 3:45 PM', 'dist': '2.8 km', 'amt': '₹240', 'type': 'Emergency'},
-    ],
-  ),
-  _PeriodData(
-    label: 'Last Week',
-    earnings: '₹4,120',
-    earningsInt: 4120,
-    prevEarnings: 3560,
-    trips: '31',
-    hours: '38.0h',
-    acceptance: '91%',
-    rating: '4.88',
-    chartBars: const [
-      _BarEntry('Mon', 720), _BarEntry('Tue', 480), _BarEntry('Wed', 890),
-      _BarEntry('Thu', 350), _BarEntry('Fri', 760), _BarEntry('Sat', 640), _BarEntry('Sun', 280),
-    ],
-    tripList: [
-      {'time': 'Mar 4, 9:00 AM', 'dist': '6.4 km', 'amt': '₹520', 'type': 'Emergency'},
-      {'time': 'Mar 4, 2:15 PM', 'dist': '4.0 km', 'amt': '₹340', 'type': 'Transfer'},
-      {'time': 'Mar 3, 8:50 PM', 'dist': '7.2 km', 'amt': '₹610', 'type': 'Emergency'},
-    ],
-  ),
-  _PeriodData(
-    label: 'This Month',
-    earnings: '₹11,360',
-    earningsInt: 11360,
-    prevEarnings: 9840,
-    trips: '87',
-    hours: '112.0h',
-    acceptance: '93%',
-    rating: '4.90',
-    chartBars: const [
-      _BarEntry('Wk 1', 2840), _BarEntry('Wk 2', 3100), _BarEntry('Wk 3', 2890), _BarEntry('Wk 4', 2530),
-    ],
-    tripList: [
-      {'time': 'Mar 10, 10:00 AM', 'dist': '5.5 km', 'amt': '₹460', 'type': 'Transfer'},
-      {'time': 'Mar 9, 7:20 PM', 'dist': '3.8 km', 'amt': '₹320', 'type': 'Emergency'},
-      {'time': 'Mar 8, 11:45 AM', 'dist': '9.1 km', 'amt': '₹780', 'type': 'Emergency'},
-    ],
-  ),
-  _PeriodData(
-    label: 'All Time',
-    earnings: '₹68,450',
-    earningsInt: 68450,
-    prevEarnings: null, // no comparison for All Time
-    trips: '542',
-    hours: '710.0h',
-    acceptance: '92%',
-    rating: '4.92',
-    chartBars: const [
-      _BarEntry('Jan', 4200), _BarEntry('Feb', 5800), _BarEntry('Mar', 3500),
-      _BarEntry('Apr', 6900), _BarEntry('May', 7200), _BarEntry('Jun', 5100),
-      _BarEntry('Jul', 6400), _BarEntry('Aug', 7800), _BarEntry('Sep', 5900),
-      _BarEntry('Oct', 6700), _BarEntry('Nov', 5500), _BarEntry('Dec', 3450),
-    ],
-    tripList: [
-      {'time': 'Feb 28, 3:30 PM', 'dist': '11.2 km', 'amt': '₹950', 'type': 'Emergency'},
-      {'time': 'Feb 14, 9:00 AM', 'dist': '8.5 km', 'amt': '₹720', 'type': 'Transfer'},
-      {'time': 'Jan 30, 6:00 PM', 'dist': '4.2 km', 'amt': '₹360', 'type': 'Emergency'},
-    ],
-  ),
-];
-
 // ── EarningsScreen ────────────────────────────────────────────────────────────
 
 class EarningsScreen extends StatefulWidget {
@@ -128,11 +51,103 @@ class EarningsScreen extends StatefulWidget {
 class _EarningsScreenState extends State<EarningsScreen> {
   int _selectedTab = 0;
   String? _selectedBar;
+  bool _isLoading = true;
+  List<QueryDocumentSnapshot> _trips = [];
+  List<_PeriodData> _dynamicPeriodData = [];
 
-  _PeriodData get _current => _periodData[_selectedTab];
+  @override
+  void initState() {
+    super.initState();
+    _loadTrips();
+  }
+
+  Future<void> _loadTrips() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final driverId = prefs.getString('driver_uid');
+      print('EARNINGS: querying for driver_uid: $driverId');
+      
+      if (driverId != null && driverId.isNotEmpty) {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('trips')
+            .where('driver_id', isEqualTo: driverId)
+            .where('status', isEqualTo: 'completed')
+            .orderBy('completed_at', descending: true)
+            .get();
+        
+        print('EARNINGS: found ${snapshot.docs.length} completed trips');
+        _processTrips(snapshot.docs);
+        if (mounted) {
+          setState(() {
+            _trips = snapshot.docs;
+            _isLoading = false;
+          });
+        }
+      } else {
+         print('EARNINGS: found 0 completed trips');
+         if (mounted) {
+           setState(() {
+             _isLoading = false;
+           });
+         }
+      }
+    } catch (e) {
+      print('EARNINGS: error loading trips - $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _processTrips(List<QueryDocumentSnapshot> docs) {
+    if (docs.isEmpty) return;
+    
+    double totalEarnings = 0;
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final fare = (data['fare'] ?? data['estimated_fare'] ?? 0).toDouble();
+      totalEarnings += fare;
+    }
+
+    _dynamicPeriodData = [
+      _PeriodData(
+        label: 'All Time',
+        earnings: '₹${totalEarnings.toInt()}',
+        earningsInt: totalEarnings.toInt(),
+        prevEarnings: null,
+        trips: '${docs.length}',
+        hours: '0.0h', 
+        acceptance: '100%',
+        rating: '5.0',
+        chartBars: const [],
+        tripList: docs.map((d) {
+          final data = d.data() as Map<String, dynamic>;
+          final timestamp = data['completed_at'] as Timestamp?;
+          final timeStr = timestamp != null 
+              ? DateFormat('MMM d, h:mm a').format(timestamp.toDate()) 
+              : 'Recent';
+          
+          return {
+            'time': timeStr,
+            'dist': 'N/A',
+            'amt': '₹${(data['fare'] ?? data['estimated_fare'] ?? 0).toInt()}',
+            'type': data['ambulance_type'] ?? 'Emergency',
+          };
+        }).toList(),
+      )
+    ];
+  }
+
+  _PeriodData get _current => _dynamicPeriodData.isNotEmpty ? _dynamicPeriodData[_selectedTab.clamp(0, _dynamicPeriodData.length - 1)] : _PeriodData(label: '', earnings: '', earningsInt: 0, trips: '', hours: '', acceptance: '', rating: '', chartBars: [], tripList: []);
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -191,13 +206,29 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
             const Divider(height: 1, color: Color(0xFFF0F4FF)),
 
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-                child: _buildContent(key: ValueKey(_selectedTab)),
+            if (_trips.isEmpty)
+              const Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.account_balance_wallet_outlined, size: 64, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text('No earnings yet', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF0A1F44))),
+                      SizedBox(height: 8),
+                      Text('Complete trips to see your earnings here.', style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+                  child: _buildContent(key: ValueKey(_selectedTab)),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -206,7 +237,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   Widget _buildContent({Key? key}) {
     final d = _current;
-    final maxAmt = d.chartBars.map((b) => b.amount).reduce((a, b) => a > b ? a : b).toDouble();
+    final maxAmt = d.chartBars.isEmpty ? 1.0 : d.chartBars.map((b) => b.amount).reduce((a, b) => a > b ? a : b).toDouble();
 
     return SingleChildScrollView(
       key: key,

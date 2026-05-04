@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme.dart';
 import '../models/booking_args.dart';
 import 'home_screen.dart';
@@ -52,6 +55,53 @@ class MainLayoutState extends State<MainLayout> with SingleTickerProviderStateMi
   void initState() {
     super.initState();
     _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1, milliseconds: 500))..repeat(reverse: true);
+    _setupPatientFCM();
+  }
+
+  /// Requests notification permission, saves the FCM token to Firestore,
+  /// and listens for in-app trip status messages.
+  Future<void> _setupPatientFCM() async {
+    await FirebaseMessaging.instance.requestPermission();
+
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('patient_uid') ?? '';
+      if (uid.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .set({'fcm_token': token}, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('Patient FCM token save failed: $e');
+        }
+      }
+    }
+
+    // Show in-app banner for foreground trip events
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (!mounted) return;
+      final type = message.data['type'] as String? ?? '';
+      String notifText = '';
+      if (type == 'driver_accepted') {
+        notifText = 'Your ambulance is on the way 🚑';
+      } else if (type == 'driver_arrived') {
+        notifText = 'Driver has arrived at your location';
+      }
+      if (notifText.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(notifText,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: AppColors.primaryBlue,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    });
   }
 
   @override

@@ -12,10 +12,23 @@ import 'providers/locale_provider.dart';
 import 'views/splash_screen.dart';
 import 'package:flutter_hello_world/localisation/app_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'core/shake_detector.dart';
+import 'package:talker_flutter/talker_flutter.dart';
+import 'core/talker.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('Background message: ${message.messageId}');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(const MyApp());
 }
 
@@ -36,6 +49,23 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _loadSavedLocale();
+    _initShakeDetector();
+  }
+
+  void _initShakeDetector() {
+    ShakeDetector.autoStart(
+      onPhoneShake: () {
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => TalkerScreen(talker: DebugLogger.talker),
+            ),
+          );
+        }
+      },
+      shakeThresholdGravity: 2.7,
+    );
   }
 
   Future<void> _loadSavedLocale() async {
@@ -60,6 +90,7 @@ class _MyAppState extends State<MyApp> {
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
           return MaterialApp(
+            navigatorKey: navigatorKey,
             title: 'AMBULAO',
             theme: AppTheme.lightTheme,
             locale: localeProvider.locale,

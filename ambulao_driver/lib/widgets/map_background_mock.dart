@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ambulao_driver/core/theme.dart';
+import 'package:geolocator/geolocator.dart';
 
 class MapBackgroundMock extends StatefulWidget {
   final Widget child;
@@ -13,92 +14,77 @@ class MapBackgroundMock extends StatefulWidget {
 }
 
 class _MapBackgroundMockState extends State<MapBackgroundMock> {
+  final Completer<GoogleMapController> _controller = Completer();
+  LatLng _center = const LatLng(17.3850, 78.4867); // Default Hyderabad
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _getUserLocation();
+  }
+
+  Future<void> _getUserLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _isLoadingLocation = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _center = LatLng(position.latitude, position.longitude);
+          _isLoadingLocation = false;
+        });
+
+        final GoogleMapController controller = await _controller.future;
+        controller.animateCamera(CameraUpdate.newLatLngZoom(_center, 14.5));
+      }
+    } catch (e) {
+      debugPrint("Error getting location for MapBackgroundMock: $e");
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        FlutterMap(
-          options: const MapOptions(
-            initialCenter: LatLng(17.3850, 78.4867), // Hyderabad Center
-            initialZoom: 13.5,
-            interactionOptions: InteractionOptions(
-              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-            ),
+        GoogleMap(
+          mapType: MapType.normal,
+          initialCameraPosition: CameraPosition(
+            target: _center,
+            zoom: 13.5,
           ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-              userAgentPackageName: 'com.example.ambulao_driver',
-            ),
-            MarkerLayer(
-              markers: [
-                // NIMS Hospital
-                Marker(
-                  point: const LatLng(17.4217, 78.4552),
-                  width: 120,
-                  height: 60,
-                  child: _buildMockMarker('NIMS Hospital'),
-                ),
-                // Apollo Jubilee Hills
-                Marker(
-                  point: const LatLng(17.4147, 78.4124),
-                  width: 140,
-                  height: 60,
-                  child: _buildMockMarker('Apollo Jubilee Hills'),
-                ),
-              ],
-            ),
-          ],
+          onMapCreated: (GoogleMapController controller) {
+            _controller.complete(controller);
+          },
+          myLocationEnabled: true,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          compassEnabled: false,
+          mapToolbarEnabled: false,
         ),
         Positioned.fill(child: widget.child),
-      ],
-    );
-  }
-
-  Widget _buildMockMarker(String label) {
-    return Column(
-      children: [
-        Container(
-          width: 40,
-          height: 24,
-          decoration: BoxDecoration(
-            color: AppTheme.primaryBlue.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryBlue.withValues(alpha: 0.5),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.local_hospital,
-            color: Colors.white,
-            size: 16,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-            textAlign: TextAlign.center,
-          ),
-        ),
       ],
     );
   }

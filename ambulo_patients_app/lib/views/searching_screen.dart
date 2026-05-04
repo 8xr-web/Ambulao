@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../services/firestore_service.dart';
 
 import '../core/theme.dart';
@@ -14,6 +16,8 @@ import 'package:provider/provider.dart';
 import 'package:location/location.dart' as loc;
 import 'package:permission_handler/permission_handler.dart';
 import '../viewmodels/user_provider.dart';
+import '../core/app_constants.dart';
+import '../core/talker.dart';
 
 class SearchingScreen extends StatefulWidget {
   final BookingArgs args;
@@ -48,12 +52,17 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
     final pickupLng = widget.args.lng ?? 78.3813;
 
     try {
+      DebugLogger.talker.info('Attempting Firestore trip creation: type=${widget.args.ambulanceType}');
       _currentTripId = await FirestoreService.createTripRequest(
         ambulanceType: widget.args.ambulanceType,
         pickup: {'address': widget.args.pickup, 'lat': pickupLat, 'lng': pickupLng},
         destination: {'address': widget.args.destination, 'lat': 17.4500, 'lng': 78.3900},
         paymentMethod: 'Cash',
       );
+      DebugLogger.talker.info('Firestore trip created successfully: ID=$_currentTripId');
+
+      // Notify online drivers via Railway backend (fire-and-forget)
+      _notifyDrivers(_currentTripId!);
 
       _tripSubscription = FirestoreService.getTripStream(_currentTripId!).listen((snapshot) async {
         if (!snapshot.exists || !mounted) return;
@@ -180,8 +189,36 @@ class _SearchingScreenState extends State<SearchingScreen> with SingleTickerProv
           );
         }
       });
-    } catch (e) {
+    } catch (e, stack) {
+      DebugLogger.talker.handle(e, stack, 'Trip Creation Failure');
       debugPrint("Error creating trip request: $e");
+    }
+  }
+
+  /// Fire-and-forget: Calls the Railway backend to push FCM notifications
+  /// to all online drivers matching the ambulance type.
+  Future<void> _notifyDrivers(String tripId) async {
+    try {
+      final url = '${AppConstants.backendUrl}/notifications/new-trip';
+      DebugLogger.talker.info('NOTIFYING RAILWAY: tripId=$tripId, type=${widget.args.ambulanceType}');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'tripId': tripId,
+          'ambulanceType': widget.args.ambulanceType,
+          'pickupAddress': widget.args.pickup,
+        }),
+      );
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        DebugLogger.talker.info('RAILWAY SUCCESS: ${response.statusCode}');
+      } else {
+        DebugLogger.talker.error('RAILWAY FAILED: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e, stack) {
+      DebugLogger.talker.handle(e, stack, 'Railway Notification Error');
     }
   }
 
